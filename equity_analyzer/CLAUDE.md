@@ -4,9 +4,9 @@
 Flutter-based equity analysis application with TradingView-style interface, focused on Apple (AAPL) stock analysis with Fibonacci retracement tools.
 
 ## Port Management - CRITICAL
-- **ALWAYS run this web application on port 8888 ONLY.** Never change the port without explicit user permission.
+- **ALWAYS run this web application on port 7070 ONLY.** Never change the port without explicit user permission.
 - Port configuration is stored in `config.yaml` - never hardcode the port value
-- Default server port is 8888 - maintain this consistency across all sessions
+- Default server port is 7070 - maintain this consistency across all sessions
 
 ## Technology Stack
 - **Frontend Framework**: Flutter 3.35.5 / Dart 3.9.2
@@ -18,6 +18,7 @@ Flutter-based equity analysis application with TradingView-style interface, focu
 
 ## Architecture Patterns
 - **No Hardcoded Values**: All configuration in config.yaml
+- **Environment Variable Security**: API keys stored in `.env` (gitignored), referenced in config.yaml as `${VAR_NAME}`
 - **Modular Structure**:
   - `lib/models/` - Data models (StockData, FibonacciLevel, CandleData)
   - `lib/services/` - API services (StockDataService)
@@ -25,6 +26,17 @@ Flutter-based equity analysis application with TradingView-style interface, focu
   - `lib/screens/` - Main screens (ChartScreen)
   - `lib/utils/` - Helper functions (FibonacciCalculator, ConfigLoader)
   - `lib/constants/` - Theme colors and constants from config
+
+## API Keys & Secrets Management - CRITICAL
+- **NEVER commit API keys to git**: All secrets go in `.env` file
+- **config.yaml uses environment variable references**: `${ALPHA_VANTAGE_API_KEY}`
+- **ConfigLoader expands variables**: Automatically replaces `${VAR}` with actual values from `.env`
+- **.env is gitignored**: Secrets are never committed to version control
+- **.env.example provided**: Template file showing required environment variables
+- **Setup process**:
+  1. Copy `.env.example` to `.env`
+  2. Add actual API keys to `.env`
+  3. ConfigLoader reads `.env` and expands variables in config.yaml at runtime
 
 ## Code Quality Standards
 - **Maximum file length**: 500 lines
@@ -69,7 +81,7 @@ dependencies:
 ```
 
 ## Platform-Specific Notes
-- **Web**: Run with `flutter run -d chrome --web-port=8888`
+- **Web**: Run with `flutter run -d chrome --web-port=7070`
 - **Linux**: Ensure GTK3 dependencies are installed
 - **Android**: Configure minimum SDK version 21+
 

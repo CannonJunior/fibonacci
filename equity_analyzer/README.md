@@ -83,33 +83,39 @@ lib/
 
 3. **Configure API Key**
 
-   Get a free API key from [Alpha Vantage](https://www.alphavantage.co/support/#api-key) and update `config.yaml`:
+   Get a free API key from [Alpha Vantage](https://www.alphavantage.co/support/#api-key).
 
-   ```yaml
-   api:
-     alpha_vantage:
-       api_key: "YOUR_API_KEY_HERE"
-   ```
+   **IMPORTANT**: API keys are stored in the `.env` file (not committed to git):
 
-   Or use the `.env` file:
    ```bash
-   echo "ALPHA_VANTAGE_API_KEY=your_key_here" > .env
+   # Copy the example file
+   cp .env.example .env
+
+   # Edit .env and add your API key
+   nano .env
    ```
+
+   Update the `.env` file with your actual API key:
+   ```bash
+   ALPHA_VANTAGE_API_KEY=your_actual_key_here
+   ```
+
+   The `config.yaml` file references environment variables using `${ALPHA_VANTAGE_API_KEY}` syntax, keeping your secrets safe.
 
 4. **Verify configuration**
 
    Check `config.yaml` for:
-   - Port configuration (default: 8888)
+   - Port configuration (default: 7070)
    - Stock symbol (default: AAPL)
    - Fibonacci levels and colors
    - Chart theme settings
 
 ## Running the Application
 
-### Web (Chrome) - Default Port 8888
+### Web (Chrome) - Default Port 7070
 
 ```bash
-flutter run -d chrome --web-port=8888
+flutter run -d chrome --web-port=7070
 ```
 
 ### Linux Desktop
@@ -145,6 +151,29 @@ flutter build apk --release
 
 All application settings are stored in `config.yaml`. **Never hardcode values** - always use configuration.
 
+### API Keys & Environment Variables
+
+**CRITICAL**: API keys are **NEVER** stored in `config.yaml` (which is committed to git). Instead, they are stored in the `.env` file which is gitignored.
+
+**Setup Process**:
+1. Copy `.env.example` to `.env`
+2. Add your actual API keys to `.env`
+3. The `config.yaml` references environment variables using `${VAR_NAME}` syntax
+4. The ConfigLoader automatically expands these references at runtime
+
+**Example**:
+```yaml
+# config.yaml (committed to git)
+api:
+  alpha_vantage:
+    api_key: "${ALPHA_VANTAGE_API_KEY}"  # Reference to env var
+```
+
+```bash
+# .env (NOT committed to git)
+ALPHA_VANTAGE_API_KEY=your_actual_secret_key_here
+```
+
 ### Key Configuration Sections
 
 #### App Settings
@@ -152,7 +181,7 @@ All application settings are stored in `config.yaml`. **Never hardcode values** 
 app:
   name: "Equity Analyzer"
   version: "1.0.0"
-  port: 8888  # CRITICAL: Always use port 8888
+  port: 7070  # CRITICAL: Always use port 7070
 ```
 
 #### Stock Data
@@ -303,7 +332,7 @@ The **61.8% level** (golden ratio) is considered the most reliable for reversals
 
 ## Port Configuration - CRITICAL
 
-**This application MUST run on port 8888.** Never change the port without explicit user permission.
+**This application MUST run on port 7070.** Never change the port without explicit user permission.
 
 To verify port:
 ```bash

@@ -8,29 +8,29 @@
 
 ## Configure API Key
 
-### Option 1: Update config.yaml (Recommended for development)
+**IMPORTANT**: API keys are stored in `.env` file (NOT in config.yaml)
 
 ```bash
-nano config.yaml
+# Copy the example file
+cp .env.example .env
+
+# Edit and add your API key
+nano .env
 ```
 
-Find this line and replace `YOUR_API_KEY_HERE` with your actual key:
-```yaml
-api_key: "YOUR_API_KEY_HERE"
-```
-
-### Option 2: Use Environment Variable
-
+Update this line with your actual key:
 ```bash
-echo "ALPHA_VANTAGE_API_KEY=your_actual_key_here" > .env
+ALPHA_VANTAGE_API_KEY=your_actual_key_here
 ```
+
+**Security Note**: The `.env` file is gitignored and will never be committed.
 
 ## Run the Application
 
-### Web (Chrome) - Runs on Port 8888
+### Web (Chrome) - Runs on Port 7070
 
 ```bash
-flutter run -d chrome --web-port=8888
+flutter run -d chrome --web-port=7070
 ```
 
 ### Linux Desktop

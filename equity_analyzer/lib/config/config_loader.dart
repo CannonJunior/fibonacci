@@ -1,23 +1,76 @@
+import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:yaml/yaml.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
-/// Configuration loader that reads from config.yaml
+/// Configuration loader that reads from config.yaml and expands environment variables
 class ConfigLoader {
   static Map<String, dynamic>? _config;
 
-  /// Load configuration from YAML file
+  /// Load configuration from YAML file and .env file
   static Future<void> load() async {
     try {
+      // Load environment variables from .env file
+      await dotenv.load(fileName: '.env');
+
+      // Load YAML configuration
       final String yamlString = await rootBundle.loadString('config.yaml');
       final dynamic yamlData = loadYaml(yamlString);
       _config = _convertYamlToMap(yamlData);
+
+      // Expand environment variables in the configuration
+      _config = _expandEnvironmentVariables(_config!);
     } catch (e) {
       throw Exception('Failed to load config.yaml: $e');
     }
   }
 
+  /// Expand environment variables in configuration recursively
+  /// Converts ${ENV_VAR_NAME} to the actual environment variable value
+  static dynamic _expandEnvironmentVariables(dynamic value) {
+    if (value is Map<String, dynamic>) {
+      final Map<String, dynamic> expandedMap = {};
+      value.forEach((key, val) {
+        expandedMap[key] = _expandEnvironmentVariables(val);
+      });
+      return expandedMap;
+    } else if (value is List) {
+      return value.map((item) => _expandEnvironmentVariables(item)).toList();
+    } else if (value is String) {
+      // Reason: Expand ${ENV_VAR_NAME} pattern to environment variable value
+      return _expandEnvVariablesInString(value);
+    } else {
+      return value;
+    }
+  }
+
+  /// Expand environment variables in a string
+  /// Supports ${VAR_NAME} syntax
+  static String _expandEnvVariablesInString(String value) {
+    final RegExp envVarPattern = RegExp(r'\$\{([A-Z_][A-Z0-9_]*)\}');
+
+    return value.replaceAllMapped(envVarPattern, (match) {
+      final String varName = match.group(1)!;
+
+      // Try dotenv first
+      String? envValue = dotenv.env[varName];
+
+      // Fall back to platform environment variables
+      envValue ??= Platform.environment[varName];
+
+      if (envValue != null) {
+        return envValue;
+      } else {
+        // Reason: Log warning but return original if env var not found
+        print('Warning: Environment variable \$$varName not found, using default or empty value');
+        return '';
+      }
+    });
+  }
+
   /// Convert YamlMap to Map<String, dynamic> recursively
-  static Map<String, dynamic> _convertYamlToMap(dynamic yaml) {
+  /// Reason: Return type is dynamic to handle both Maps and scalar values (strings, numbers, bools)
+  static dynamic _convertYamlToMap(dynamic yaml) {
     if (yaml is YamlMap) {
       final Map<String, dynamic> map = {};
       yaml.forEach((key, value) {
@@ -25,8 +78,9 @@ class ConfigLoader {
       });
       return map;
     } else if (yaml is YamlList) {
-      return {'list': yaml.map((item) => _convertYamlToMap(item)).toList()};
+      return yaml.map((item) => _convertYamlToMap(item)).toList();
     } else {
+      // Return scalar values directly (String, int, double, bool, etc.)
       return yaml;
     }
   }
@@ -51,9 +105,10 @@ class ConfigLoader {
     return current ?? defaultValue;
   }
 
-  /// Get string configuration
+  /// Get string configuration with environment variable expansion
   static String getString(String path, {String defaultValue = ''}) {
-    return get(path, defaultValue: defaultValue).toString();
+    final dynamic value = get(path, defaultValue: defaultValue);
+    return value?.toString() ?? defaultValue;
   }
 
   /// Get integer configuration
