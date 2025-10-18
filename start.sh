@@ -62,36 +62,52 @@ if [ ! -f ".env" ]; then
     if [ -f ".env.example" ]; then
         cp .env.example .env
         echo -e "${GREEN}✓${NC} Created .env from .env.example"
+    else
+        echo -e "${RED}ERROR: .env.example not found!${NC}"
+        exit 1
+    fi
+fi
+
+# Check if shell environment variable $ALPHA_VANTAGE_API_KEY is set
+# If so, update the .env file to use it instead of "demo"
+if [ ! -z "$ALPHA_VANTAGE_API_KEY" ]; then
+    echo -e "${GREEN}✓${NC} Found \$ALPHA_VANTAGE_API_KEY in shell environment"
+    echo -e "${BLUE}  → Updating .env file with environment variable...${NC}"
+
+    # Update .env file with the shell environment variable
+    # Reason: Use sed to replace the API key line in .env file
+    if grep -q "ALPHA_VANTAGE_API_KEY=" .env; then
+        # Replace existing line
+        sed -i "s|ALPHA_VANTAGE_API_KEY=.*|ALPHA_VANTAGE_API_KEY=$ALPHA_VANTAGE_API_KEY|g" .env
+    else
+        # Add new line if not exists
+        echo "ALPHA_VANTAGE_API_KEY=$ALPHA_VANTAGE_API_KEY" >> .env
+    fi
+
+    echo -e "${GREEN}✓${NC} API key updated from shell environment variable"
+else
+    # No shell environment variable - check .env file
+    if grep -q "ALPHA_VANTAGE_API_KEY=demo" .env; then
+        echo -e "${YELLOW}⚠${NC}  Using demo API key (limited functionality)"
         echo ""
         echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
         echo -e "${YELLOW}  ⚠ IMPORTANT: Configure your API key${NC}"
         echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
         echo ""
-        echo "1. Get a FREE API key from:"
-        echo "   ${CYAN}https://www.alphavantage.co/support/#api-key${NC}"
+        echo "Option 1: Set environment variable (recommended)"
+        echo "   ${GREEN}export ALPHA_VANTAGE_API_KEY=your_actual_key_here${NC}"
+        echo "   ${GREEN}./start.sh${NC}"
         echo ""
-        echo "2. Edit the .env file:"
-        echo "   ${CYAN}nano .env${NC}"
-        echo ""
-        echo "3. Replace 'demo' with your actual API key:"
-        echo "   ${GREEN}ALPHA_VANTAGE_API_KEY=your_actual_key_here${NC}"
+        echo "Option 2: Edit .env file manually"
+        echo "   1. Get FREE API key: ${CYAN}https://www.alphavantage.co/support/#api-key${NC}"
+        echo "   2. Edit: ${CYAN}nano .env${NC}"
+        echo "   3. Replace 'demo' with your actual key"
         echo ""
         echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
         echo ""
-        read -p "Press Enter once you've configured your API key..."
+        read -p "Press Enter to continue with demo key (limited) or Ctrl+C to exit and configure..."
     else
-        echo -e "${RED}ERROR: .env.example not found!${NC}"
-        exit 1
-    fi
-else
-    echo -e "${GREEN}✓${NC} Found .env file"
-
-    # Check if API key is still the default
-    if grep -q "ALPHA_VANTAGE_API_KEY=demo" .env; then
-        echo -e "${YELLOW}⚠${NC}  Using demo API key (limited functionality)"
-        echo "   Get a free key: ${CYAN}https://www.alphavantage.co/support/#api-key${NC}"
-    else
-        echo -e "${GREEN}✓${NC} API key configured"
+        echo -e "${GREEN}✓${NC} API key configured in .env file"
     fi
 fi
 

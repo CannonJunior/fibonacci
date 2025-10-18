@@ -37,7 +37,6 @@ dependencies:
 
   # Chart library for financial candlestick charts
   fl_chart: ^0.68.0
-  candlesticks: ^2.1.0
 
   # HTTP client for API calls
   http: ^1.2.0

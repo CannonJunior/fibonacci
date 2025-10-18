@@ -1,5 +1,7 @@
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
-import 'package:candlesticks/candlesticks.dart' as cs;
+import 'package:fl_chart/fl_chart.dart';
+import 'package:intl/intl.dart';
 import '../models/stock_data.dart';
 import '../models/candle_data.dart';
 import '../models/fibonacci_level.dart';
@@ -18,30 +20,22 @@ class ChartWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Convert CandleData to candlesticks package format
-    final List<cs.Candle> candles = stockData.candles.map((candle) {
-      return cs.Candle(
-        date: candle.date,
-        high: candle.high,
-        low: candle.low,
-        open: candle.open,
-        close: candle.close,
-        volume: candle.volume,
+    if (stockData.candles.isEmpty) {
+      return Center(
+        child: Text(
+          'No data available',
+          style: TextStyle(color: ThemeConstants.textColor),
+        ),
       );
-    }).toList();
+    }
 
     return Container(
       color: ThemeConstants.backgroundColor,
+      padding: const EdgeInsets.all(16),
       child: Stack(
         children: [
-          // Main candlestick chart
-          cs.Candlesticks(
-            candles: candles,
-            onLoadMoreCandles: () async {
-              // Reason: Could implement pagination here for loading more historical data
-              return null;
-            },
-          ),
+          // Main candlestick chart using fl_chart
+          _buildCandlestickChart(),
 
           // Fibonacci overlay
           if (fibonacciRetracement != null)
@@ -55,6 +49,189 @@ class ChartWidget extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Widget _buildCandlestickChart() {
+    final candles = stockData.candles;
+
+    // Calculate min and max prices for Y-axis
+    final double minPrice = candles.map((c) => c.low).reduce((a, b) => a < b ? a : b);
+    final double maxPrice = candles.map((c) => c.high).reduce((a, b) => a > b ? a : b);
+    final double priceRange = maxPrice - minPrice;
+    final double padding = priceRange * 0.1; // 10% padding
+
+    // Create candlestick data groups
+    final List<BarChartGroupData> barGroups = [];
+    for (int i = 0; i < candles.length; i++) {
+      final candle = candles[i];
+      final bool isBullish = candle.close >= candle.open;
+      final Color candleColor = isBullish ? ThemeConstants.bullColor : ThemeConstants.bearColor;
+
+      // Reason: Use BarChart to create candlestick-like visualization
+      // Each candle is represented as a bar with high-low range
+      barGroups.add(
+        BarChartGroupData(
+          x: i,
+          barRods: [
+            BarChartRodData(
+              fromY: candle.low,
+              toY: candle.high,
+              color: candleColor.withOpacity(0.3),
+              width: 1,
+            ),
+            BarChartRodData(
+              fromY: candle.open < candle.close ? candle.open : candle.close,
+              toY: candle.open < candle.close ? candle.close : candle.open,
+              color: candleColor,
+              width: 6,
+            ),
+          ],
+        ),
+      );
+    }
+
+    return BarChart(
+      BarChartData(
+        alignment: BarChartAlignment.spaceAround,
+        minY: minPrice - padding,
+        maxY: maxPrice + padding,
+        groupsSpace: 2,
+        barTouchData: BarTouchData(
+          enabled: true,
+          touchTooltipData: BarTouchTooltipData(
+            getTooltipColor: (group) => ThemeConstants.gridColor,
+            getTooltipItem: (group, groupIndex, rod, rodIndex) {
+              if (groupIndex < 0 || groupIndex >= candles.length) {
+                return null;
+              }
+              final candle = candles[groupIndex];
+              final dateStr = DateFormat('MM/dd/yyyy').format(candle.date);
+              return BarTooltipItem(
+                '$dateStr\n'
+                'O: \$${candle.open.toStringAsFixed(2)}\n'
+                'H: \$${candle.high.toStringAsFixed(2)}\n'
+                'L: \$${candle.low.toStringAsFixed(2)}\n'
+                'C: \$${candle.close.toStringAsFixed(2)}',
+                TextStyle(
+                  color: ThemeConstants.textColor,
+                  fontSize: 10,
+                ),
+              );
+            },
+          ),
+        ),
+        gridData: FlGridData(
+          show: true,
+          drawVerticalLine: true,
+          horizontalInterval: priceRange / 5,
+          verticalInterval: (candles.length / 10).ceilToDouble(),
+          getDrawingHorizontalLine: (value) {
+            return FlLine(
+              color: ThemeConstants.gridColor,
+              strokeWidth: 1,
+            );
+          },
+          getDrawingVerticalLine: (value) {
+            return FlLine(
+              color: ThemeConstants.gridColor.withOpacity(0.3),
+              strokeWidth: 1,
+            );
+          },
+        ),
+        titlesData: FlTitlesData(
+          show: true,
+          // Bottom axis (dates) - shows dates from left (oldest) to right (newest)
+          bottomTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              reservedSize: 32,
+              interval: (candles.length / 5).ceilToDouble(),
+              getTitlesWidget: (value, meta) {
+                final index = value.toInt();
+                if (index < 0 || index >= candles.length) {
+                  return const Text('');
+                }
+
+                // Reason: Display dates in chronological order (oldest left, newest right)
+                final date = candles[index].date;
+                final dateStr = DateFormat('MM/dd').format(date);
+
+                return Padding(
+                  padding: const EdgeInsets.only(top: 8.0),
+                  child: Text(
+                    dateStr,
+                    style: TextStyle(
+                      color: ThemeConstants.textColor,
+                      fontSize: 10,
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          // Left axis (prices)
+          leftTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              reservedSize: 60,
+              interval: priceRange / 5,
+              getTitlesWidget: (value, meta) {
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8.0),
+                  child: Text(
+                    '\$${value.toStringAsFixed(2)}',
+                    style: TextStyle(
+                      color: ThemeConstants.textColor,
+                      fontSize: 10,
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          // Hide top and right titles
+          topTitles: const AxisTitles(
+            sideTitles: SideTitles(showTitles: false),
+          ),
+          rightTitles: const AxisTitles(
+            sideTitles: SideTitles(showTitles: false),
+          ),
+        ),
+        borderData: FlBorderData(
+          show: true,
+          border: Border.all(color: ThemeConstants.gridColor),
+        ),
+        barGroups: barGroups,
+        extraLinesData: ExtraLinesData(
+          horizontalLines: _buildFibonacciLines(),
+        ),
+      ),
+      swapAnimationDuration: const Duration(milliseconds: 250),
+    );
+  }
+
+  List<HorizontalLine> _buildFibonacciLines() {
+    if (fibonacciRetracement == null) return [];
+
+    return fibonacciRetracement!.levels.map((level) {
+      return HorizontalLine(
+        y: level.price,
+        color: level.color.withOpacity(0.5),
+        strokeWidth: 1.5,
+        dashArray: [5, 5],
+        label: HorizontalLineLabel(
+          show: true,
+          alignment: Alignment.topRight,
+          padding: const EdgeInsets.all(4),
+          style: TextStyle(
+            color: ThemeConstants.textColor,
+            fontSize: 10,
+            fontWeight: FontWeight.bold,
+          ),
+          labelResolver: (line) => level.displayLabel,
+        ),
+      );
+    }).toList();
   }
 }
 
@@ -113,7 +290,8 @@ class FibonacciPainter extends CustomPainter {
 
       final TextPainter textPainter = TextPainter(
         text: span,
-        textDirection: TextDirection.ltr,
+        textAlign: TextAlign.left,
+        textDirection: ui.TextDirection.ltr,
       );
 
       textPainter.layout();
@@ -206,7 +384,7 @@ class FibonacciPainter extends CustomPainter {
 
     final TextPainter textPainter = TextPainter(
       text: span,
-      textDirection: TextDirection.ltr,
+      textDirection: ui.TextDirection.ltr,
       textAlign: TextAlign.center,
     );
 
