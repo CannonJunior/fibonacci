@@ -1,0 +1,59 @@
+# Equity Analyzer Configuration
+# DO NOT commit API keys to version control - use environment variables in production
+
+app:
+  name: "Equity Analyzer"
+  version: "1.0.0"
+  port: 8888  # Development server port (when running web)
+
+stock:
+  default_symbol: "AAPL"
+  default_exchange: "NASDAQ"
+  refresh_interval_seconds: 60  # Data refresh interval
+
+api:
+  # Free APIs for real-time stock data
+  # Get your free API key from: https://www.alphavantage.co/support/#api-key
+  provider: "alpha_vantage"  # Options: alpha_vantage, finnhub, polygon
+  alpha_vantage:
+    base_url: "https://www.alphavantage.co/query"
+    api_key: "YOUR_API_KEY_HERE"  # Replace with your Alpha Vantage API key
+  finnhub:
+    base_url: "https://finnhub.io/api/v1"
+    api_key: "YOUR_FINNHUB_API_KEY_HERE"
+  polygon:
+    base_url: "https://api.polygon.io/v2"
+    api_key: "YOUR_POLYGON_API_KEY_HERE"
+
+fibonacci:
+  levels:
+    - 0.0     # 0%
+    - 0.236   # 23.6%
+    - 0.382   # 38.2%
+    - 0.5     # 50%
+    - 0.618   # 61.8% (Golden Ratio)
+    - 0.786   # 78.6%
+    - 1.0     # 100%
+  colors:
+    level_0: "#FF0000"      # Red - 0%
+    level_236: "#FFA500"    # Orange - 23.6%
+    level_382: "#FFFF00"    # Yellow - 38.2%
+    level_50: "#00FF00"     # Green - 50%
+    level_618: "#00FFFF"    # Cyan - 61.8% (Golden)
+    level_786: "#0000FF"    # Blue - 78.6%
+    level_100: "#FF00FF"    # Magenta - 100%
+
+chart:
+  default_timeframe: "1D"  # Options: 1m, 5m, 15m, 1H, 4H, 1D, 1W, 1M
+  candlestick:
+    bull_color: "#26A69A"  # Green for bullish candles
+    bear_color: "#EF5350"  # Red for bearish candles
+  background_color: "#131722"  # TradingView dark theme
+  grid_color: "#1E2330"
+  text_color: "#D1D4DC"
+
+features:
+  enable_fibonacci: true
+  enable_volume: true
+  enable_indicators: true
+  enable_drawing_tools: true
