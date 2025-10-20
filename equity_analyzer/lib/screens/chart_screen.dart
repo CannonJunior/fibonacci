@@ -44,8 +44,13 @@ class _ChartScreenState extends State<ChartScreen> {
     });
 
     try {
-      // Fetch stock data
-      final StockData stockData = await _stockService.fetchDailyData(_symbol);
+      // Fetch stock data for past year
+      // Reason: Using 'full' outputSize to get complete historical data,
+      // which will be filtered to past year in the service layer
+      final StockData stockData = await _stockService.fetchDailyData(
+        _symbol,
+        outputSize: 'full',
+      );
 
       // Calculate Fibonacci retracement from the data
       final FibonacciRetracement fibonacci =
@@ -92,13 +97,28 @@ class _ChartScreenState extends State<ChartScreen> {
     return Scaffold(
       backgroundColor: ThemeConstants.backgroundColor,
       appBar: AppBar(
-        title: Text(
-          'Equity Analyzer - ${_stockData?.symbol ?? _symbol}',
-          style: TextStyle(
-            color: ThemeConstants.textColor,
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-          ),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Equity Analyzer v2.0 - ${_stockData?.symbol ?? _symbol}',
+              style: TextStyle(
+                color: ThemeConstants.textColor,
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            if (_stockData != null)
+              Text(
+                _stockData!.dateRange,
+                style: TextStyle(
+                  color: ThemeConstants.textColor.withOpacity(0.6),
+                  fontSize: 12,
+                  fontWeight: FontWeight.normal,
+                ),
+              ),
+          ],
         ),
         actions: [
           // Fibonacci toggle button
@@ -188,6 +208,11 @@ class _ChartScreenState extends State<ChartScreen> {
           child: ChartWidget(
             stockData: _stockData!,
             fibonacciRetracement: _showFibonacci ? _fibonacciRetracement : null,
+            onFibonacciChanged: (newFib) {
+              setState(() {
+                _fibonacciRetracement = newFib;
+              });
+            },
           ),
         ),
 

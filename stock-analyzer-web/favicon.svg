@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Background circle -->
+  <circle cx="32" cy="32" r="30" fill="#1d9bf0"/>
+
+  <!-- Candlestick chart -->
+  <!-- Green candle 1 -->
+  <line x1="16" y1="28" x2="16" y2="20" stroke="#00ba7c" stroke-width="2"/>
+  <rect x="13" y="24" width="6" height="8" fill="#00ba7c"/>
+  <line x1="16" y1="32" x2="16" y2="36" stroke="#00ba7c" stroke-width="2"/>
+
+  <!-- Red candle 2 -->
+  <line x1="26" y1="18" x2="26" y2="14" stroke="#f4212e" stroke-width="2"/>
+  <rect x="23" y="18" width="6" height="10" fill="#f4212e"/>
+  <line x1="26" y1="28" x2="26" y2="34" stroke="#f4212e" stroke-width="2"/>
+
+  <!-- Green candle 3 -->
+  <line x1="36" y1="32" x2="36" y2="24" stroke="#00ba7c" stroke-width="2"/>
+  <rect x="33" y="28" width="6" height="12" fill="#00ba7c"/>
+  <line x1="36" y1="40" x2="36" y2="46" stroke="#00ba7c" stroke-width="2"/>
+
+  <!-- Green candle 4 (tallest) -->
+  <line x1="46" y1="38" x2="46" y2="20" stroke="#00ba7c" stroke-width="2"/>
+  <rect x="43" y="24" width="6" height="16" fill="#00ba7c"/>
+  <line x1="46" y1="40" x2="46" y2="48" stroke="#00ba7c" stroke-width="2"/>
+
+  <!-- Fibonacci golden spiral accent -->
+  <path d="M 48 16 Q 52 16 52 20" stroke="#FFD700" stroke-width="1.5" fill="none" opacity="0.6"/>
+</svg>

@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stock Analyzer v2.0 - AAPL</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <link rel="stylesheet" href="css/styles.css">
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-title">
+                <h1>Stock Analyzer v2.0</h1>
+                <div class="stock-info">
+                    <span class="symbol" id="symbol">AAPL</span>
+                    <span class="date-range" id="dateRange">Loading...</span>
+                </div>
+            </div>
+            <div class="header-actions">
+                <button id="toggleFibonacci" class="btn btn-primary" title="Toggle Fibonacci Levels">
+                    <span id="fibIcon">📈</span> Fibonacci
+                </button>
+                <button id="refreshData" class="btn btn-secondary" title="Refresh Data">
+                    🔄 Refresh
+                </button>
+            </div>
+        </header>
+
+        <!-- Stock Price Info -->
+        <div class="price-info" id="priceInfo">
+            <div class="price-current">
+                <span class="label">Current Price:</span>
+                <span class="value" id="currentPrice">$0.00</span>
+            </div>
+            <div class="price-change" id="priceChange">
+                <span class="change-value" id="changeValue">+$0.00</span>
+                <span class="change-percent" id="changePercent">(+0.00%)</span>
+            </div>
+        </div>
+
+        <!-- Main Chart Area -->
+        <div class="chart-container">
+            <svg id="chart"></svg>
+            <div id="tooltip" class="tooltip" style="display: none;"></div>
+            <div id="crosshair" class="crosshair" style="display: none;"></div>
+        </div>
+
+        <!-- Fibonacci Levels Panel -->
+        <div id="fibonacciPanel" class="fibonacci-panel" style="display: none;">
+            <h3>Fibonacci Retracement Levels</h3>
+            <div id="fibonacciLevels" class="fibonacci-levels"></div>
+            <div class="fibonacci-hint">
+                💡 Click on any candle to recalculate Fibonacci levels from that point
+            </div>
+        </div>
+
+        <!-- Loading Indicator -->
+        <div id="loading" class="loading">
+            <div class="spinner"></div>
+            <p>Loading AAPL data...</p>
+        </div>
+
+        <!-- Error Message -->
+        <div id="error" class="error" style="display: none;">
+            <p id="errorMessage"></p>
+            <button id="retryBtn" class="btn btn-primary">Retry</button>
+        </div>
+    </div>
+
+    <script src="js/config.js"></script>
+    <script src="js/api.js"></script>
+    <script src="js/fibonacci.js"></script>
+    <script src="js/chart.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>

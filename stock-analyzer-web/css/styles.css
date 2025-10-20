@@ -1,0 +1,351 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    background-color: #0f1419;
+    color: #e7e9ea;
+    overflow-x: hidden;
+}
+
+.container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+/* Header */
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px;
+    background-color: #16181c;
+    border-radius: 12px;
+    margin-bottom: 20px;
+}
+
+.header-title h1 {
+    font-size: 24px;
+    margin-bottom: 8px;
+    color: #e7e9ea;
+}
+
+.stock-info {
+    display: flex;
+    gap: 15px;
+    align-items: center;
+}
+
+.symbol {
+    font-size: 18px;
+    font-weight: bold;
+    color: #1d9bf0;
+}
+
+.date-range {
+    font-size: 12px;
+    color: #71767b;
+}
+
+.header-actions {
+    display: flex;
+    gap: 10px;
+}
+
+/* Buttons */
+.btn {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.btn-primary {
+    background-color: #1d9bf0;
+    color: white;
+}
+
+.btn-primary:hover {
+    background-color: #1a8cd8;
+}
+
+.btn-secondary {
+    background-color: #2f3336;
+    color: #e7e9ea;
+}
+
+.btn-secondary:hover {
+    background-color: #3d4144;
+}
+
+/* Price Info */
+.price-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px;
+    background-color: #16181c;
+    border-radius: 12px;
+    margin-bottom: 20px;
+}
+
+.price-current {
+    display: flex;
+    gap: 10px;
+    align-items: baseline;
+}
+
+.price-current .label {
+    font-size: 14px;
+    color: #71767b;
+}
+
+.price-current .value {
+    font-size: 32px;
+    font-weight: bold;
+    color: #e7e9ea;
+}
+
+.price-change {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    font-size: 18px;
+    font-weight: 600;
+}
+
+.price-change.positive {
+    color: #00ba7c;
+}
+
+.price-change.negative {
+    color: #f4212e;
+}
+
+/* Chart Container */
+.chart-container {
+    position: relative;
+    background-color: #16181c;
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 20px;
+    min-height: 600px;
+}
+
+#chart {
+    width: 100%;
+    height: 600px;
+}
+
+/* Tooltip */
+.tooltip {
+    position: absolute;
+    background-color: rgba(22, 24, 28, 0.95);
+    border: 1px solid #2f3336;
+    border-radius: 8px;
+    padding: 12px;
+    pointer-events: none;
+    z-index: 1000;
+    font-size: 12px;
+    line-height: 1.6;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+
+.tooltip .date {
+    font-weight: bold;
+    margin-bottom: 6px;
+    color: #1d9bf0;
+}
+
+.tooltip .price-line {
+    display: flex;
+    justify-content: space-between;
+    gap: 15px;
+}
+
+/* Crosshair */
+.crosshair {
+    position: absolute;
+    pointer-events: none;
+    z-index: 999;
+}
+
+.crosshair-line-vertical {
+    stroke: #71767b;
+    stroke-width: 1;
+    stroke-dasharray: 4;
+}
+
+/* Fibonacci Panel */
+.fibonacci-panel {
+    background-color: #16181c;
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+.fibonacci-panel h3 {
+    margin-bottom: 15px;
+    color: #e7e9ea;
+}
+
+.fibonacci-levels {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 10px;
+    margin-bottom: 15px;
+}
+
+.fibonacci-level {
+    display: flex;
+    justify-content: space-between;
+    padding: 10px;
+    background-color: #0f1419;
+    border-radius: 6px;
+    border-left: 4px solid;
+}
+
+.fibonacci-level .label {
+    font-weight: 600;
+}
+
+.fibonacci-level .price {
+    color: #71767b;
+}
+
+.fibonacci-hint {
+    font-size: 12px;
+    color: #71767b;
+    text-align: center;
+    padding: 10px;
+    background-color: #0f1419;
+    border-radius: 6px;
+}
+
+/* Loading */
+.loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 60px;
+    background-color: #16181c;
+    border-radius: 12px;
+}
+
+.spinner {
+    width: 50px;
+    height: 50px;
+    border: 4px solid #2f3336;
+    border-top-color: #1d9bf0;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-bottom: 20px;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* Error */
+.error {
+    padding: 40px;
+    background-color: #16181c;
+    border-radius: 12px;
+    text-align: center;
+}
+
+.error p {
+    color: #f4212e;
+    margin-bottom: 20px;
+    font-size: 14px;
+    white-space: pre-wrap;
+    text-align: left;
+    max-width: 600px;
+    margin-left: auto;
+    margin-right: auto;
+    line-height: 1.6;
+}
+
+/* Chart Styles */
+.candle-wick {
+    stroke-width: 1;
+}
+
+.candle-body {
+    stroke-width: 1;
+}
+
+.candle-bullish .candle-wick {
+    stroke: #00ba7c;
+}
+
+.candle-bullish .candle-body {
+    fill: #00ba7c;
+    stroke: #00ba7c;
+}
+
+.candle-bearish .candle-wick {
+    stroke: #f4212e;
+}
+
+.candle-bearish .candle-body {
+    fill: #f4212e;
+    stroke: #f4212e;
+}
+
+.candle-group:hover {
+    opacity: 0.8;
+    cursor: pointer;
+}
+
+.fibonacci-line {
+    stroke-dasharray: 5, 5;
+    stroke-width: 1.5;
+    opacity: 0.7;
+}
+
+.fibonacci-label {
+    font-size: 11px;
+    font-weight: 600;
+    fill: #e7e9ea;
+}
+
+.axis text {
+    fill: #71767b;
+    font-size: 11px;
+}
+
+.axis line,
+.axis path {
+    stroke: #2f3336;
+}
+
+.grid line {
+    stroke: #2f3336;
+    stroke-opacity: 0.3;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .header {
+        flex-direction: column;
+        gap: 15px;
+    }
+
+    .price-info {
+        flex-direction: column;
+        gap: 15px;
+    }
+
+    #chart {
+        height: 400px;
+    }
+}

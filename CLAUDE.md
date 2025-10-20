@@ -59,3 +59,4 @@
 ### 📝 Memoization Instructions
 - **Memoize any input given in MEMOIZE.md file.**
 - **This project focuses on agent-native RAG features to help users with document analysis and knowledge synthesis.**
+- DO NOT USE SAMPLE DATA EVER IN THIS PROJECT. MEMOIZE THIS! #

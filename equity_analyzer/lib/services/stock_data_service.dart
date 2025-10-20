@@ -115,6 +115,22 @@ class StockDataService {
         // Reason: Sort candles by date (oldest first)
         candles.sort((a, b) => a.date.compareTo(b.date));
 
+        // Reason: Filter to past year if using 'full' output size
+        // This ensures we only show the most recent year of data
+        if (outputSize == 'full' && candles.isNotEmpty) {
+          final DateTime oneYearAgo = DateTime.now().subtract(const Duration(days: 365));
+          final List<CandleData> filteredCandles = candles
+              .where((candle) => candle.date.isAfter(oneYearAgo))
+              .toList();
+
+          return StockData(
+            symbol: symbolFromApi,
+            name: symbolFromApi, // Alpha Vantage doesn't provide company name in this endpoint
+            candles: filteredCandles,
+            lastUpdated: DateTime.now(),
+          );
+        }
+
         return StockData(
           symbol: symbolFromApi,
           name: symbolFromApi, // Alpha Vantage doesn't provide company name in this endpoint

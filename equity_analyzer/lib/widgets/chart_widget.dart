@@ -8,19 +8,29 @@ import '../models/fibonacci_level.dart';
 import '../constants/theme_constants.dart';
 
 /// Chart widget displaying candlestick chart with optional Fibonacci overlay
-class ChartWidget extends StatelessWidget {
+class ChartWidget extends StatefulWidget {
   final StockData stockData;
   final FibonacciRetracement? fibonacciRetracement;
+  final Function(FibonacciRetracement)? onFibonacciChanged;
 
   const ChartWidget({
     Key? key,
     required this.stockData,
     this.fibonacciRetracement,
+    this.onFibonacciChanged,
   }) : super(key: key);
 
   @override
+  State<ChartWidget> createState() => _ChartWidgetState();
+}
+
+class _ChartWidgetState extends State<ChartWidget> {
+  int? _hoveredIndex;
+  int? _selectedIndex;
+
+  @override
   Widget build(BuildContext context) {
-    if (stockData.candles.isEmpty) {
+    if (widget.stockData.candles.isEmpty) {
       return Center(
         child: Text(
           'No data available',
@@ -38,11 +48,11 @@ class ChartWidget extends StatelessWidget {
           _buildCandlestickChart(),
 
           // Fibonacci overlay
-          if (fibonacciRetracement != null)
+          if (widget.fibonacciRetracement != null)
             CustomPaint(
               painter: FibonacciPainter(
-                fibonacci: fibonacciRetracement!,
-                candles: stockData.candles,
+                fibonacci: widget.fibonacciRetracement!,
+                candles: widget.stockData.candles,
               ),
               size: Size.infinite,
             ),
@@ -52,7 +62,7 @@ class ChartWidget extends StatelessWidget {
   }
 
   Widget _buildCandlestickChart() {
-    final candles = stockData.candles;
+    final candles = widget.stockData.candles;
 
     // Calculate min and max prices for Y-axis
     final double minPrice = candles.map((c) => c.low).reduce((a, b) => a < b ? a : b);
@@ -98,8 +108,26 @@ class ChartWidget extends StatelessWidget {
         groupsSpace: 2,
         barTouchData: BarTouchData(
           enabled: true,
+          handleBuiltInTouches: true,
+          touchCallback: (FlTouchEvent event, BarTouchResponse? response) {
+            // Reason: Handle hover and click events for interactive Fibonacci
+            if (event is FlTapUpEvent && response != null && response.spot != null) {
+              final touchedIndex = response.spot!.touchedBarGroupIndex;
+              _handleChartClick(touchedIndex);
+            } else if (event is FlPanUpdateEvent || event is FlLongPressMoveUpdate) {
+              if (response != null && response.spot != null) {
+                setState(() {
+                  _hoveredIndex = response.spot!.touchedBarGroupIndex;
+                });
+              }
+            } else if (event is FlPanEndEvent || event is FlLongPressEnd) {
+              setState(() {
+                _hoveredIndex = null;
+              });
+            }
+          },
           touchTooltipData: BarTouchTooltipData(
-            getTooltipColor: (group) => ThemeConstants.gridColor,
+            getTooltipColor: (group) => ThemeConstants.gridColor.withOpacity(0.9),
             getTooltipItem: (group, groupIndex, rod, rodIndex) {
               if (groupIndex < 0 || groupIndex >= candles.length) {
                 return null;
@@ -115,6 +143,7 @@ class ChartWidget extends StatelessWidget {
                 TextStyle(
                   color: ThemeConstants.textColor,
                   fontSize: 10,
+                  fontWeight: FontWeight.bold,
                 ),
               );
             },
@@ -145,7 +174,8 @@ class ChartWidget extends StatelessWidget {
             sideTitles: SideTitles(
               showTitles: true,
               reservedSize: 32,
-              interval: (candles.length / 5).ceilToDouble(),
+              // Reason: Limit x-axis labels to ~6-8 ticks to avoid overcrowding
+              interval: (candles.length / 6).ceilToDouble().clamp(10.0, double.infinity),
               getTitlesWidget: (value, meta) {
                 final index = value.toInt();
                 if (index < 0 || index >= candles.length) {
@@ -210,10 +240,90 @@ class ChartWidget extends StatelessWidget {
     );
   }
 
-  List<HorizontalLine> _buildFibonacciLines() {
-    if (fibonacciRetracement == null) return [];
+  /// Handle chart click to recalculate Fibonacci from selected point
+  void _handleChartClick(int index) {
+    if (index < 0 || index >= widget.stockData.candles.length) return;
+    if (widget.onFibonacciChanged == null) return;
 
-    return fibonacciRetracement!.levels.map((level) {
+    final candles = widget.stockData.candles;
+    final clickedCandle = candles[index];
+
+    // Reason: Recalculate Fibonacci using clicked point as either high or low
+    // Determine if clicked price should be swing high or swing low
+    final currentFib = widget.fibonacciRetracement;
+    if (currentFib == null) return;
+
+    // If clicked price is above middle of range, treat as new swing high
+    final midPoint = (currentFib.swingHigh + currentFib.swingLow) / 2;
+    final clickedPrice = clickedCandle.high;
+
+    late FibonacciRetracement newFib;
+    if (clickedPrice > midPoint) {
+      // Use clicked point as swing high, keep existing swing low
+      newFib = FibonacciRetracement(
+        swingHigh: clickedPrice,
+        swingLow: currentFib.swingLow,
+        highDate: clickedCandle.date,
+        lowDate: currentFib.lowDate,
+        levels: _calculateLevels(clickedPrice, currentFib.swingLow),
+        isUptrend: clickedCandle.date.isAfter(currentFib.lowDate),
+      );
+    } else {
+      // Use clicked point as swing low, keep existing swing high
+      newFib = FibonacciRetracement(
+        swingHigh: currentFib.swingHigh,
+        swingLow: clickedPrice,
+        highDate: currentFib.highDate,
+        lowDate: clickedCandle.date,
+        levels: _calculateLevels(currentFib.swingHigh, clickedPrice),
+        isUptrend: currentFib.highDate.isAfter(clickedCandle.date),
+      );
+    }
+
+    setState(() {
+      _selectedIndex = index;
+    });
+
+    widget.onFibonacciChanged?.call(newFib);
+  }
+
+  /// Calculate Fibonacci levels from swing high and low
+  List<FibonacciLevel> _calculateLevels(double swingHigh, double swingLow) {
+    final double range = swingHigh - swingLow;
+    final List<double> ratios = [0.0, 0.236, 0.382, 0.5, 0.618, 0.786, 1.0];
+
+    // Reason: Calculate retracement levels from swing high
+    return ratios.map((ratio) {
+      final double price = swingHigh - (range * ratio);
+
+      return FibonacciLevel(
+        ratio: ratio,
+        price: price,
+        label: '${(ratio * 100).toStringAsFixed(1)}%',
+        color: _getColorForLevel(ratio),
+      );
+    }).toList();
+  }
+
+  /// Get color for Fibonacci level
+  Color _getColorForLevel(double ratio) {
+    final Map<String, Color> colors = ThemeConstants.fibonacciColors;
+
+    if (ratio == 0.0) return colors['level_0']!;
+    if (ratio == 0.236) return colors['level_236']!;
+    if (ratio == 0.382) return colors['level_382']!;
+    if (ratio == 0.5) return colors['level_50']!;
+    if (ratio == 0.618) return colors['level_618']!;
+    if (ratio == 0.786) return colors['level_786']!;
+    if (ratio == 1.0) return colors['level_100']!;
+
+    return Colors.white;
+  }
+
+  List<HorizontalLine> _buildFibonacciLines() {
+    if (widget.fibonacciRetracement == null) return [];
+
+    return widget.fibonacciRetracement!.levels.map((level) {
       return HorizontalLine(
         y: level.price,
         color: level.color.withOpacity(0.5),
