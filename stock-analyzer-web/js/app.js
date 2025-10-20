@@ -28,6 +28,11 @@ const App = {
             this.toggleFibonacci();
         });
 
+        // Return to daily button
+        document.getElementById('returnToDaily').addEventListener('click', () => {
+            Chart.returnToDailyView();
+        });
+
         // Refresh button
         document.getElementById('refreshData').addEventListener('click', () => {
             this.loadData();
@@ -49,6 +54,9 @@ const App = {
                 Chart.render(this.candles, this.fibonacci);
             }
         });
+
+        // Setup context menu
+        Chart.setupContextMenu();
     },
 
     /**

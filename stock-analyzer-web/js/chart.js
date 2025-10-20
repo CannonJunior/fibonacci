@@ -5,10 +5,18 @@ const Chart = {
     height: 0,
     xScale: null,
     yScale: null,
+    xScaleOriginal: null,
     data: null,
     fibonacci: null,
     showFibonacci: true,
     onCandleClick: null,
+    zoom: null,
+    currentTransform: null,
+    contextMenuTarget: null,
+    intradayData: null,
+    isIntradayMode: false,
+    dailyData: null,
+    dailyFibonacci: null,
 
     /**
      * Initialize and render the chart
@@ -44,6 +52,9 @@ const Chart = {
         if (this.showFibonacci && this.fibonacci) {
             this.drawFibonacci();
         }
+
+        // Setup zoom behavior
+        this.setupZoom();
     },
 
     /**
@@ -54,6 +65,9 @@ const Chart = {
         this.xScale = d3.scaleTime()
             .domain(d3.extent(this.data, d => d.date))
             .range([0, this.width]);
+
+        // Save original scale for zoom
+        this.xScaleOriginal = this.xScale.copy();
 
         // Y scale (price)
         const yMin = d3.min(this.data, d => d.low);
@@ -95,7 +109,7 @@ const Chart = {
     drawAxes() {
         // X axis (dates) - reduced to ~6 ticks
         this.svg.append('g')
-            .attr('class', 'axis')
+            .attr('class', 'axis axis-bottom')
             .attr('transform', `translate(0,${this.height})`)
             .call(d3.axisBottom(this.xScale)
                 .ticks(CONFIG.chart.xAxisTicks)
@@ -128,7 +142,12 @@ const Chart = {
             .data(this.data)
             .enter()
             .append('g')
-            .attr('class', d => `candle-group candle-${d.close >= d.open ? 'bullish' : 'bearish'}`)
+            .attr('class', d => {
+                const baseClass = `candle-group candle-${d.close >= d.open ? 'bullish' : 'bearish'}`;
+                // Reason: Add special class if this candle has cached intraday data
+                const hasIntraday = API.hasIntradayData(CONFIG.stock.symbol, d.date);
+                return hasIntraday ? `${baseClass} candle-has-intraday` : baseClass;
+            })
             .attr('transform', d => `translate(${this.xScale(d.date)},0)`);
 
         // Draw wicks
@@ -217,6 +236,7 @@ const Chart = {
         // High marker
         const highCandle = this.data[highIndex];
         this.svg.append('circle')
+            .attr('class', 'swing-marker swing-high-circle')
             .attr('cx', this.xScale(highCandle.date))
             .attr('cy', this.yScale(this.fibonacci.swingHigh))
             .attr('r', 0)
@@ -228,6 +248,7 @@ const Chart = {
             .attr('r', 8);
 
         this.svg.append('text')
+            .attr('class', 'swing-marker swing-high-text')
             .attr('x', this.xScale(highCandle.date))
             .attr('y', this.yScale(this.fibonacci.swingHigh) + 4)
             .attr('text-anchor', 'middle')
@@ -243,6 +264,7 @@ const Chart = {
         // Low marker
         const lowCandle = this.data[lowIndex];
         this.svg.append('circle')
+            .attr('class', 'swing-marker swing-low-circle')
             .attr('cx', this.xScale(lowCandle.date))
             .attr('cy', this.yScale(this.fibonacci.swingLow))
             .attr('r', 0)
@@ -254,6 +276,7 @@ const Chart = {
             .attr('r', 8);
 
         this.svg.append('text')
+            .attr('class', 'swing-marker swing-low-text')
             .attr('x', this.xScale(lowCandle.date))
             .attr('y', this.yScale(this.fibonacci.swingLow) + 4)
             .attr('text-anchor', 'middle')
@@ -281,11 +304,12 @@ const Chart = {
             <div class="price-line"><span>Close:</span> <span>$${candle.close.toFixed(2)}</span></div>
         `;
 
+        // Reason: Use clientX/clientY with fixed positioning for accurate cursor placement
         tooltip
             .html(html)
             .style('display', 'block')
-            .style('left', (event.pageX + 15) + 'px')
-            .style('top', (event.pageY - 15) + 'px');
+            .style('left', event.clientX + 'px')
+            .style('top', event.clientY + 'px');
     },
 
     /**
@@ -296,10 +320,276 @@ const Chart = {
     },
 
     /**
+     * Setup D3 zoom behavior for x-axis scaling
+     * Scroll down = zoom out, Scroll up = zoom in
+     */
+    setupZoom() {
+        const self = this;
+
+        // Create zoom behavior with custom wheel delta for inverted zoom
+        this.zoom = d3.zoom()
+            .scaleExtent([0.5, 50]) // Min zoom out 0.5x, max zoom in 50x
+            .filter(function(event) {
+                // Reason: Disable double-click zoom and click-drag pan, only allow wheel zoom
+                return event.type === 'wheel';
+            })
+            .wheelDelta(function(event) {
+                // Reason: Negate deltaY to invert zoom direction
+                // Scroll down (positive deltaY) = zoom out (negative delta)
+                // Scroll up (negative deltaY) = zoom in (positive delta)
+                return -event.deltaY * (event.deltaMode === 1 ? 0.05 : event.deltaMode ? 1 : 0.002);
+            })
+            .on('zoom', function(event) {
+                self.handleZoom(event);
+            });
+
+        // Apply zoom to the SVG element and prevent default scrolling
+        d3.select('#chart')
+            .call(this.zoom)
+            .on('wheel', function(event) {
+                // Reason: Prevent page scroll when mouse is over chart
+                event.preventDefault();
+            }, { passive: false });
+
+        // Store initial transform
+        this.currentTransform = d3.zoomIdentity;
+    },
+
+    /**
+     * Handle zoom events
+     */
+    handleZoom(event) {
+        this.currentTransform = event.transform;
+
+        // Update x-scale with zoom transform
+        const newXScale = this.currentTransform.rescaleX(this.xScaleOriginal);
+        this.xScale = newXScale;
+
+        // Get visible data range
+        const visibleDomain = newXScale.domain();
+        const visibleData = this.data.filter(d =>
+            d.date >= visibleDomain[0] && d.date <= visibleDomain[1]
+        );
+
+        // Update axes
+        this.updateAxes();
+
+        // Update candles
+        this.updateCandles(visibleData);
+
+        // Update Fibonacci if shown
+        if (this.showFibonacci && this.fibonacci) {
+            this.updateFibonacci();
+        }
+    },
+
+    /**
+     * Update axes after zoom
+     */
+    updateAxes() {
+        // Update bottom axis
+        this.svg.select('.axis-bottom')
+            .call(d3.axisBottom(this.xScale)
+                .ticks(CONFIG.chart.xAxisTicks)
+                .tickFormat(d => API.formatShortDate(d))
+            );
+    },
+
+    /**
+     * Update candles after zoom
+     */
+    updateCandles(visibleData) {
+        const self = this;
+
+        // Update candle positions
+        const candleGroups = this.svg.selectAll('.candle-group')
+            .data(this.data, d => d.date);
+
+        // Update positions
+        candleGroups
+            .attr('transform', d => `translate(${this.xScale(d.date)},0)`)
+            .style('display', d => {
+                const domain = this.xScale.domain();
+                return (d.date >= domain[0] && d.date <= domain[1]) ? null : 'none';
+            });
+    },
+
+    /**
+     * Update Fibonacci lines after zoom
+     */
+    updateFibonacci() {
+        if (!this.fibonacci) return;
+
+        // Update Fibonacci line positions
+        this.svg.selectAll('.fibonacci-line')
+            .attr('x2', this.width);
+
+        this.svg.selectAll('.fibonacci-label')
+            .attr('x', this.width - 60);
+
+        // Update swing marker positions
+        const highIndex = this.data.findIndex(d => d.date.getTime() === this.fibonacci.highDate.getTime());
+        const lowIndex = this.data.findIndex(d => d.date.getTime() === this.fibonacci.lowDate.getTime());
+
+        if (highIndex !== -1) {
+            const highCandle = this.data[highIndex];
+            const newX = this.xScale(highCandle.date);
+
+            this.svg.select('.swing-high-circle')
+                .attr('cx', newX);
+
+            this.svg.select('.swing-high-text')
+                .attr('x', newX);
+        }
+
+        if (lowIndex !== -1) {
+            const lowCandle = this.data[lowIndex];
+            const newX = this.xScale(lowCandle.date);
+
+            this.svg.select('.swing-low-circle')
+                .attr('cx', newX);
+
+            this.svg.select('.swing-low-text')
+                .attr('x', newX);
+        }
+    },
+
+    /**
      * Toggle Fibonacci display
      */
     toggleFibonacci() {
         this.showFibonacci = !this.showFibonacci;
         this.render(this.data, this.fibonacci);
+    },
+
+    /**
+     * Setup context menu handlers
+     */
+    setupContextMenu() {
+        const self = this;
+        const contextMenu = document.getElementById('contextMenu');
+        const svg = document.getElementById('chart');
+
+        // Prevent default browser context menu on SVG
+        svg.addEventListener('contextmenu', function(event) {
+            event.preventDefault();
+
+            // Find if we clicked on a candle
+            const target = event.target;
+            const candleGroup = target.closest('.candle-group');
+
+            if (candleGroup) {
+                // Store the candle data
+                const candleData = d3.select(candleGroup).datum();
+                self.contextMenuTarget = candleData;
+
+                // Reason: Use clientX/clientY with fixed positioning for accurate cursor placement
+                contextMenu.style.left = event.clientX + 'px';
+                contextMenu.style.top = event.clientY + 'px';
+                contextMenu.classList.add('visible');
+            }
+        });
+
+        // Hide context menu when clicking elsewhere
+        document.addEventListener('click', function() {
+            contextMenu.classList.remove('visible');
+        });
+
+        // Handle context menu item clicks
+        const fetchIntradayItem = contextMenu.querySelector('[data-action="fetch-intraday"]');
+        fetchIntradayItem.addEventListener('click', async function(event) {
+            event.stopPropagation();
+
+            if (!self.contextMenuTarget) return;
+
+            const targetDate = self.contextMenuTarget.date;
+            const symbol = CONFIG.stock.symbol;
+
+            // Reason: Ask user for confirmation before fetching
+            const userConfirmed = confirm(
+                `Would you like to fetch intraday data for ${symbol} on ${API.formatDate(targetDate)}?`
+            );
+
+            if (!userConfirmed) {
+                contextMenu.classList.remove('visible');
+                return;
+            }
+
+            try {
+                // Check if data already exists
+                const hasData = API.hasIntradayData(symbol, targetDate);
+
+                let intradayCandles;
+                if (hasData) {
+                    console.log('Intraday data already cached, using existing data');
+                    intradayCandles = await API.fetchIntradayData(symbol, targetDate);
+                } else {
+                    console.log('Fetching new intraday data...');
+                    // Show loading indicator
+                    const loadingDiv = document.getElementById('loading');
+                    loadingDiv.style.display = 'flex';
+
+                    intradayCandles = await API.fetchIntradayData(symbol, targetDate);
+
+                    loadingDiv.style.display = 'none';
+                }
+
+                if (intradayCandles.length === 0) {
+                    alert(`No intraday data available for ${API.formatDate(targetDate)}. The market may have been closed on this day.`);
+                    contextMenu.classList.remove('visible');
+                    return;
+                }
+
+                // Store daily data before switching to intraday
+                if (!self.dailyData) {
+                    self.dailyData = self.data;
+                    self.dailyFibonacci = self.fibonacci;
+                }
+
+                // Store intraday data and switch to intraday mode
+                self.intradayData = intradayCandles;
+                self.isIntradayMode = true;
+
+                // Re-render chart with intraday data
+                self.render(intradayCandles, null);
+
+                // Zoom to fit the intraday data
+                self.resetZoom();
+
+                // Show the return to daily button
+                document.getElementById('returnToDaily').style.display = 'inline-block';
+
+            } catch (error) {
+                alert(`Error fetching intraday data: ${error.message}`);
+            }
+
+            contextMenu.classList.remove('visible');
+        });
+    },
+
+    /**
+     * Reset zoom to initial view
+     */
+    resetZoom() {
+        if (this.zoom && this.svg) {
+            d3.select('#chart')
+                .transition()
+                .duration(750)
+                .call(this.zoom.transform, d3.zoomIdentity);
+        }
+    },
+
+    /**
+     * Return to daily chart view from intraday
+     */
+    returnToDailyView() {
+        if (this.dailyData) {
+            this.isIntradayMode = false;
+            this.render(this.dailyData, this.dailyFibonacci);
+            this.resetZoom();
+
+            // Hide the return button
+            document.getElementById('returnToDaily').style.display = 'none';
+        }
     }
 };

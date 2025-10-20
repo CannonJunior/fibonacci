@@ -142,11 +142,16 @@ body {
 #chart {
     width: 100%;
     height: 600px;
+    cursor: grab;
+}
+
+#chart:active {
+    cursor: grabbing;
 }
 
 /* Tooltip */
 .tooltip {
-    position: absolute;
+    position: fixed;
     background-color: rgba(22, 24, 28, 0.95);
     border: 1px solid #2f3336;
     border-radius: 8px;
@@ -156,6 +161,7 @@ body {
     font-size: 12px;
     line-height: 1.6;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+    transform: translate(10px, 10px);
 }
 
 .tooltip .date {
@@ -306,6 +312,17 @@ body {
     cursor: pointer;
 }
 
+/* Candles with cached intraday data */
+.candle-has-intraday.candle-bullish .candle-body {
+    stroke: #005a3d;
+    stroke-width: 3;
+}
+
+.candle-has-intraday.candle-bearish .candle-body {
+    stroke: #8b0000;
+    stroke-width: 3;
+}
+
 .fibonacci-line {
     stroke-dasharray: 5, 5;
     stroke-width: 1.5;
@@ -331,6 +348,49 @@ body {
 .grid line {
     stroke: #2f3336;
     stroke-opacity: 0.3;
+}
+
+/* Context Menu */
+.context-menu {
+    position: fixed;
+    background-color: #16181c;
+    border: 1px solid #2f3336;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+    z-index: 2000;
+    min-width: 200px;
+    display: none;
+}
+
+.context-menu.visible {
+    display: block;
+}
+
+.context-menu-item {
+    padding: 12px 16px;
+    cursor: pointer;
+    font-size: 14px;
+    color: #e7e9ea;
+    border-bottom: 1px solid #2f3336;
+    transition: background-color 0.2s ease;
+}
+
+.context-menu-item:last-child {
+    border-bottom: none;
+}
+
+.context-menu-item:hover {
+    background-color: #1d9bf0;
+}
+
+.context-menu-item.disabled {
+    color: #71767b;
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+.context-menu-item.disabled:hover {
+    background-color: transparent;
 }
 
 /* Responsive */

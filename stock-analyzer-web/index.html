@@ -20,6 +20,9 @@
                 </div>
             </div>
             <div class="header-actions">
+                <button id="returnToDaily" class="btn btn-primary" title="Return to Daily Chart" style="display: none;">
+                    ⬅️ Back to Daily
+                </button>
                 <button id="toggleFibonacci" class="btn btn-primary" title="Toggle Fibonacci Levels">
                     <span id="fibIcon">📈</span> Fibonacci
                 </button>
@@ -46,6 +49,9 @@
             <svg id="chart"></svg>
             <div id="tooltip" class="tooltip" style="display: none;"></div>
             <div id="crosshair" class="crosshair" style="display: none;"></div>
+            <div id="contextMenu" class="context-menu">
+                <div class="context-menu-item" data-action="fetch-intraday">Fetch Intraday Data</div>
+            </div>
         </div>
 
         <!-- Fibonacci Levels Panel -->
