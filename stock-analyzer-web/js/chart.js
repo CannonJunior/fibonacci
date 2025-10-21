@@ -208,7 +208,7 @@ const Chart = {
             // Label
             fibGroup.append('text')
                 .attr('class', 'fibonacci-label')
-                .attr('x', this.width - 60)
+                .attr('x', 10)
                 .attr('y', y - 5)
                 .attr('fill', level.color)
                 .text(`${level.label} $${level.price.toFixed(2)}`)
@@ -424,8 +424,9 @@ const Chart = {
         this.svg.selectAll('.fibonacci-line')
             .attr('x2', this.width);
 
-        this.svg.selectAll('.fibonacci-label')
-            .attr('x', this.width - 60);
+        // Labels stay on the left at x=10, no need to update position
+        // this.svg.selectAll('.fibonacci-label')
+        //     .attr('x', 10);
 
         // Update swing marker positions
         const highIndex = this.data.findIndex(d => d.date.getTime() === this.fibonacci.highDate.getTime());

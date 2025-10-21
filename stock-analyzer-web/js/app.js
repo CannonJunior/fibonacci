@@ -12,6 +12,12 @@ const App = {
         // Load API key from environment first
         await CONFIG.loadApiKey();
 
+        // Initialize stock selector
+        await StockSelector.init();
+
+        // Initialize sidebar
+        await Sidebar.init();
+
         // Setup event listeners
         this.setupEventListeners();
 
@@ -63,12 +69,20 @@ const App = {
      * Load stock data from API
      */
     async loadData() {
+        await this.loadStockData(CONFIG.stock.symbol);
+    },
+
+    /**
+     * Load stock data for a specific symbol
+     * @param {string} symbol - Stock symbol to load
+     */
+    async loadStockData(symbol) {
         this.showLoading();
         this.hideError();
 
         try {
             // Fetch data
-            this.candles = await API.fetchDailyData();
+            this.candles = await API.fetchDailyData(symbol);
 
             if (!this.candles || this.candles.length === 0) {
                 throw new Error('No data received from API');
@@ -85,8 +99,11 @@ const App = {
             // Render chart
             Chart.render(this.candles, this.fibonacci);
 
+            // Update sidebar with new stock
+            await Sidebar.updateAfterLoad(symbol);
+
             this.hideLoading();
-            console.log(`Loaded ${this.candles.length} candles`);
+            console.log(`Loaded ${this.candles.length} candles for ${symbol}`);
         } catch (error) {
             console.error('Failed to load data:', error);
             this.showError(error.message);

@@ -4,15 +4,34 @@ const API = {
     intradayCache: new Map(),
 
     /**
-     * Fetch daily stock data from Alpha Vantage
+     * Fetch daily stock data from database first, then Alpha Vantage if needed
      * @param {string} symbol - Stock symbol (e.g., 'AAPL')
      * @param {string} outputSize - 'compact' (100 days) or 'full' (20+ years)
      * @returns {Promise<Array>} Array of candle data
      */
     async fetchDailyData(symbol = CONFIG.stock.symbol, outputSize = 'full') {
+        // Reason: Check database first to avoid unnecessary API calls
+        try {
+            const dbResponse = await fetch(`/api/get-daily?symbol=${symbol}`);
+            const dbResult = await dbResponse.json();
+
+            if (dbResult.data && dbResult.data.length > 0) {
+                console.log(`Loaded ${dbResult.data.length} candles for ${symbol} from database`);
+                // Convert date strings back to Date objects
+                return dbResult.data.map(candle => ({
+                    ...candle,
+                    date: new Date(candle.date)
+                }));
+            }
+        } catch (error) {
+            console.log('Database lookup failed, fetching from API:', error.message);
+        }
+
+        // Fetch from Alpha Vantage API
         const url = `${CONFIG.api.baseUrl}?function=TIME_SERIES_DAILY&symbol=${symbol}&outputsize=${outputSize}&apikey=${CONFIG.api.key}`;
 
         try {
+            console.log(`Fetching ${symbol} data from Alpha Vantage API...`);
             const response = await fetch(url);
             const data = await response.json();
 
@@ -50,6 +69,9 @@ const API = {
             const fiveYearsAgo = new Date();
             fiveYearsAgo.setFullYear(fiveYearsAgo.getFullYear() - 5);
             const filteredCandles = candles.filter(c => c.date > fiveYearsAgo);
+
+            // Reason: Save to database for future use
+            this.saveDailyDataToDatabase(symbol, filteredCandles);
 
             return filteredCandles;
         } catch (error) {
@@ -148,6 +170,9 @@ const API = {
             // Reason: Cache the data to prevent repeat API calls
             this.intradayCache.set(cacheKey, candles);
 
+            // Reason: Save to database for persistence
+            this.saveIntradayDataToDatabase(symbol, candles);
+
             return candles;
         } catch (error) {
             console.error('Error fetching intraday data:', error);
@@ -165,5 +190,185 @@ const API = {
         const dateStr = targetDate.toISOString().split('T')[0];
         const cacheKey = `${symbol}_${dateStr}`;
         return this.intradayCache.has(cacheKey);
+    },
+
+    /**
+     * Save daily data to database
+     * @param {string} symbol - Stock symbol
+     * @param {Array} candles - Candle data
+     */
+    async saveDailyDataToDatabase(symbol, candles) {
+        try {
+            // Convert candles to database format
+            const dbCandles = candles.map(c => ({
+                date: c.date.toISOString().split('T')[0],
+                open: c.open,
+                high: c.high,
+                low: c.low,
+                close: c.close,
+                volume: c.volume
+            }));
+
+            const response = await fetch('/api/save-daily', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ symbol, candles: dbCandles })
+            });
+
+            if (response.ok) {
+                console.log(`Saved ${candles.length} candles for ${symbol} to database`);
+            }
+        } catch (error) {
+            console.error('Failed to save to database:', error);
+        }
+    },
+
+    /**
+     * Fetch company overview data (market cap, P/E, etc.)
+     * @param {string} symbol - Stock symbol
+     * @returns {Promise<Object>} Company overview data
+     */
+    async fetchCompanyOverview(symbol) {
+        const url = `${CONFIG.api.baseUrl}?function=OVERVIEW&symbol=${symbol}&apikey=${CONFIG.api.key}`;
+
+        try {
+            console.log(`Fetching company overview for ${symbol}...`);
+            const response = await fetch(url);
+            const data = await response.json();
+
+            if (data['Note']) {
+                throw new Error('API rate limit reached');
+            }
+
+            if (!data.Symbol) {
+                throw new Error('No overview data available');
+            }
+
+            return {
+                symbol: data.Symbol,
+                marketCap: parseFloat(data.MarketCapitalization) || null,
+                peRatio: parseFloat(data.PERatio) || null,
+                dividendYield: parseFloat(data.DividendYield) || null,
+                dividendPerShare: parseFloat(data.DividendPerShare) || null,
+                week52High: parseFloat(data['52WeekHigh']) || null,
+                week52Low: parseFloat(data['52WeekLow']) || null,
+                beta: parseFloat(data.Beta) || null,
+                eps: parseFloat(data.EPS) || null,
+                bookValue: parseFloat(data.BookValue) || null,
+                profitMargin: parseFloat(data.ProfitMargin) || null,
+                operatingMarginTTM: parseFloat(data.OperatingMarginTTM) || null
+            };
+        } catch (error) {
+            console.error('Error fetching company overview:', error);
+            throw error;
+        }
+    },
+
+    /**
+     * Fetch quarterly income statements
+     * @param {string} symbol - Stock symbol
+     * @returns {Promise<Array>} Array of quarterly income statements
+     */
+    async fetchIncomeStatement(symbol) {
+        const url = `${CONFIG.api.baseUrl}?function=INCOME_STATEMENT&symbol=${symbol}&apikey=${CONFIG.api.key}`;
+
+        try {
+            console.log(`Fetching income statements for ${symbol}...`);
+            const response = await fetch(url);
+            const data = await response.json();
+
+            if (data['Note']) {
+                throw new Error('API rate limit reached');
+            }
+
+            if (!data.quarterlyReports || data.quarterlyReports.length === 0) {
+                throw new Error('No income statement data available');
+            }
+
+            // Get last 8 quarters for YoY comparison
+            const reports = data.quarterlyReports.slice(0, 8).map(report => ({
+                fiscalDateEnding: report.fiscalDateEnding,
+                totalRevenue: parseFloat(report.totalRevenue) || 0,
+                operatingExpenses: parseFloat(report.operatingExpenses) || 0,
+                netIncome: parseFloat(report.netIncome) || 0,
+                ebitda: parseFloat(report.ebitda) || 0,
+                eps: parseFloat(report.reportedEPS) || 0,
+                grossProfit: parseFloat(report.grossProfit) || 0
+            }));
+
+            return reports;
+        } catch (error) {
+            console.error('Error fetching income statement:', error);
+            throw error;
+        }
+    },
+
+    /**
+     * Calculate year-over-year changes from quarterly reports
+     * @param {Array} quarterlyReports - Array of quarterly reports
+     * @returns {Object} YoY changes
+     */
+    calculateYoYChanges(quarterlyReports) {
+        if (quarterlyReports.length < 5) {
+            return null;
+        }
+
+        // Compare most recent quarter (Q0) with same quarter last year (Q4)
+        const current = quarterlyReports[0];
+        const yearAgo = quarterlyReports[4];
+
+        const calculateChange = (current, previous) => {
+            if (!previous || previous === 0) return null;
+            return ((current - previous) / Math.abs(previous)) * 100;
+        };
+
+        const calculateMargin = (netIncome, revenue) => {
+            if (!revenue || revenue === 0) return null;
+            return (netIncome / revenue) * 100;
+        };
+
+        return {
+            revenueChange: calculateChange(current.totalRevenue, yearAgo.totalRevenue),
+            operatingExpensesChange: calculateChange(current.operatingExpenses, yearAgo.operatingExpenses),
+            netIncomeChange: calculateChange(current.netIncome, yearAgo.netIncome),
+            netProfitMargin: calculateMargin(current.netIncome, current.totalRevenue),
+            netProfitMarginChange: calculateChange(
+                calculateMargin(current.netIncome, current.totalRevenue),
+                calculateMargin(yearAgo.netIncome, yearAgo.totalRevenue)
+            ),
+            epsChange: calculateChange(current.eps, yearAgo.eps),
+            ebitdaChange: calculateChange(current.ebitda, yearAgo.ebitda)
+        };
+    },
+
+    /**
+     * Save intraday data to database
+     * @param {string} symbol - Stock symbol
+     * @param {Array} candles - Intraday candle data
+     */
+    async saveIntradayDataToDatabase(symbol, candles) {
+        try {
+            // Convert candles to database format
+            const dbCandles = candles.map(c => ({
+                timestamp: c.date.toISOString(),
+                open: c.open,
+                high: c.high,
+                low: c.low,
+                close: c.close,
+                volume: c.volume
+            }));
+
+            const response = await fetch('/api/save-intraday', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ symbol, candles: dbCandles })
+            });
+
+            if (response.ok) {
+                console.log(`Saved ${candles.length} intraday candles for ${symbol} to database`);
+            }
+        } catch (error) {
+            console.error('Failed to save intraday data to database:', error);
+        }
     }
 };
