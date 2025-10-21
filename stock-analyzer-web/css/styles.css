@@ -47,6 +47,8 @@ body {
 
 .sidebar-controls {
     position: relative;
+    display: flex;
+    gap: 8px;
 }
 
 .icon-button {
@@ -142,6 +144,16 @@ body {
     background-color: rgba(29, 155, 240, 0.1);
 }
 
+.stock-item.has-chart-data {
+    background-color: rgba(0, 186, 124, 0.15);
+    border-left-color: #00ba7c;
+}
+
+.stock-item.has-chart-data.active {
+    border-left-color: #1d9bf0;
+    background-color: rgba(29, 155, 240, 0.1);
+}
+
 .stock-item-header {
     display: flex;
     justify-content: space-between;
@@ -153,11 +165,36 @@ body {
     font-weight: bold;
     color: #1d9bf0;
     font-size: 14px;
+    cursor: pointer;
+    transition: color 0.2s ease;
+}
+
+.stock-item-symbol:hover {
+    color: #1a8cd8;
+}
+
+.stock-item-header-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
 }
 
 .stock-item-change {
     font-size: 13px;
     font-weight: 600;
+}
+
+.expand-icon {
+    color: #71767b;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    padding: 4px;
+}
+
+.expand-icon:hover {
+    color: #1d9bf0;
+    transform: scale(1.1);
 }
 
 .stock-item-change.positive {

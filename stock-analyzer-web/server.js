@@ -147,6 +147,72 @@ const server = http.createServer((req, res) => {
         return;
     }
 
+    // API endpoint to save company overview
+    if (pathname === '/api/save-company-overview' && req.method === 'POST') {
+        let body = '';
+        req.on('data', chunk => { body += chunk.toString(); });
+        req.on('end', () => {
+            try {
+                const { overview } = JSON.parse(body);
+                db.saveCompanyOverview(overview);
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: true }));
+            } catch (error) {
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: error.message }));
+            }
+        });
+        return;
+    }
+
+    // API endpoint to get company overview
+    if (pathname === '/api/get-company-overview') {
+        const symbol = parsedUrl.query.symbol;
+        if (!symbol) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Symbol parameter required' }));
+            return;
+        }
+
+        const overview = db.getCompanyOverview(symbol);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ overview }));
+        return;
+    }
+
+    // API endpoint to save income statements
+    if (pathname === '/api/save-income-statements' && req.method === 'POST') {
+        let body = '';
+        req.on('data', chunk => { body += chunk.toString(); });
+        req.on('end', () => {
+            try {
+                const { symbol, statements } = JSON.parse(body);
+                db.saveIncomeStatements(symbol, statements);
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: true }));
+            } catch (error) {
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: error.message }));
+            }
+        });
+        return;
+    }
+
+    // API endpoint to get income statements
+    if (pathname === '/api/get-income-statements') {
+        const symbol = parsedUrl.query.symbol;
+        if (!symbol) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Symbol parameter required' }));
+            return;
+        }
+
+        const statements = db.getIncomeStatements(symbol);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ statements }));
+        return;
+    }
+
     // Serve static files
     let filePath = '.' + req.url;
     if (filePath === './') {

@@ -6,6 +6,7 @@
     <title>Stock Analyzer v2.0 - AAPL</title>
     <link rel="icon" type="image/svg+xml" href="favicon.svg">
     <link rel="stylesheet" href="css/styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://d3js.org/d3.v7.min.js"></script>
 </head>
 <body>
@@ -15,6 +16,9 @@
             <div class="sidebar-header">
                 <h3>Loaded Stocks</h3>
                 <div class="sidebar-controls">
+                    <button id="expandAllButton" class="icon-button" title="Expand/Collapse All">
+                        <i id="expandAllIcon" class="fas fa-expand-alt"></i>
+                    </button>
                     <button id="sortButton" class="icon-button" title="Sort Options">
                         <span class="sort-icon">⇅</span>
                     </button>
@@ -34,6 +38,7 @@
                     </div>
                 </div>
             </div>
+
             <div class="sidebar-content" id="sidebarContent">
                 <div class="sidebar-empty">
                     No stocks loaded yet
