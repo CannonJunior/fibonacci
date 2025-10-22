@@ -32,7 +32,11 @@ const Chart = {
 
         // Setup dimensions
         const container = document.querySelector('.chart-container');
-        this.width = container.clientWidth - CONFIG.chart.margin.left - CONFIG.chart.margin.right;
+        const chartElement = document.getElementById('chart');
+
+        // Reason: Ensure we get the full available width, accounting for padding
+        const containerWidth = container.clientWidth - 40; // 20px padding on each side
+        this.width = containerWidth - CONFIG.chart.margin.left - CONFIG.chart.margin.right;
         this.height = 600 - CONFIG.chart.margin.top - CONFIG.chart.margin.bottom;
 
         // Create SVG

@@ -4,6 +4,12 @@ const Sidebar = {
     currentSort: 'percent-change',
     sectorAverages: {},
     subSectorAverages: {},
+    filters: {
+        sectors: new Set(),
+        dividendMin: 0,
+        dividendMax: 100,
+        stockStatus: 'all' // 'all', 'added', 'not-added'
+    },
 
     /**
      * Initialize the sidebar
@@ -75,6 +81,180 @@ const Sidebar = {
                 await this.render();
             });
         });
+
+        // Filter button toggle
+        const filterButton = document.getElementById('filterButton');
+        const filterPanel = document.getElementById('filterPanel');
+
+        filterButton.addEventListener('click', (e) => {
+            e.stopPropagation();
+            filterPanel.classList.toggle('open');
+        });
+
+        // Filter option expand/collapse
+        document.querySelectorAll('.filter-option-header').forEach(header => {
+            header.addEventListener('click', (e) => {
+                e.stopPropagation();
+                header.classList.toggle('expanded');
+                const content = header.nextElementSibling;
+                content.classList.toggle('expanded');
+            });
+        });
+
+        // Stock status toggle
+        document.querySelectorAll('input[name="stock-status-toggle"]').forEach(radio => {
+            radio.addEventListener('change', async (e) => {
+                this.filters.stockStatus = e.target.value;
+                await this.render();
+            });
+        });
+    },
+
+    /**
+     * Initialize filter options with sector checkboxes and dividend slider
+     */
+    initializeFilterOptions() {
+        // Populate sector checkboxes
+        this.populateSectorFilter();
+
+        // Setup dividend slider
+        this.setupDividendSlider();
+    },
+
+    /**
+     * Populate sector filter checkboxes
+     */
+    populateSectorFilter() {
+        const sectorContent = document.getElementById('sectorFilterContent');
+
+        // Get unique sectors from loaded stocks
+        const sectors = [...new Set(this.loadedStocks.map(stock => stock.sector))].sort();
+
+        const checkboxList = document.createElement('div');
+        checkboxList.className = 'sector-checkbox-list';
+
+        sectors.forEach(sector => {
+            const item = document.createElement('div');
+            item.className = 'sector-checkbox-item';
+
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.id = `sector-${sector.replace(/\s+/g, '-')}`;
+            checkbox.value = sector;
+            checkbox.checked = this.filters.sectors.size === 0 || this.filters.sectors.has(sector);
+
+            const label = document.createElement('label');
+            label.htmlFor = checkbox.id;
+            label.textContent = sector;
+
+            // Reason: Add event listener to handle sector filtering
+            checkbox.addEventListener('change', async (e) => {
+                if (e.target.checked) {
+                    this.filters.sectors.delete(sector);
+                } else {
+                    this.filters.sectors.add(sector);
+                }
+                await this.render();
+            });
+
+            item.appendChild(checkbox);
+            item.appendChild(label);
+            checkboxList.appendChild(item);
+        });
+
+        sectorContent.innerHTML = '';
+        sectorContent.appendChild(checkboxList);
+    },
+
+    /**
+     * Setup dividend yield slider
+     */
+    setupDividendSlider() {
+        // Reason: Calculate min and max dividend yields from loaded stocks
+        const minYield = 0;
+        let maxYield = 10;
+
+        const yields = this.loadedStocks
+            .filter(stock => stock.overview && stock.overview.dividendYield)
+            .map(stock => stock.overview.dividendYield * 100);
+
+        if (yields.length > 0) {
+            // Reason: Round up to nearest integer
+            maxYield = Math.ceil(Math.max(...yields));
+        }
+
+        const minSlider = document.getElementById('dividendMinSlider');
+        const maxSlider = document.getElementById('dividendMaxSlider');
+        const minDisplay = document.getElementById('dividendMinDisplay');
+        const maxDisplay = document.getElementById('dividendMaxDisplay');
+        const rangeElement = document.getElementById('dividendRange');
+
+        // Reason: Set initial filter values to match slider range
+        this.filters.dividendMin = minYield;
+        this.filters.dividendMax = maxYield;
+
+        // Set slider ranges
+        minSlider.min = minYield;
+        minSlider.max = maxYield;
+        minSlider.value = minYield;
+        minSlider.step = 0.1;
+
+        maxSlider.min = minYield;
+        maxSlider.max = maxYield;
+        maxSlider.value = maxYield;
+        maxSlider.step = 0.1;
+
+        // Update displays
+        minDisplay.textContent = `${minYield.toFixed(1)}%`;
+        maxDisplay.textContent = `${maxYield.toFixed(1)}%`;
+
+        // Function to update the range gradient
+        const updateRange = () => {
+            const min = parseFloat(minSlider.value);
+            const max = parseFloat(maxSlider.value);
+            const rangeMin = parseFloat(minSlider.min);
+            const rangeMax = parseFloat(minSlider.max);
+
+            const percentMin = ((min - rangeMin) / (rangeMax - rangeMin)) * 100;
+            const percentMax = ((max - rangeMin) / (rangeMax - rangeMin)) * 100;
+
+            rangeElement.style.left = percentMin + '%';
+            rangeElement.style.width = (percentMax - percentMin) + '%';
+        };
+
+        // Initial range update
+        updateRange();
+
+        // Add event listeners
+        minSlider.addEventListener('input', async (e) => {
+            let value = parseFloat(e.target.value);
+            const maxValue = parseFloat(maxSlider.value);
+
+            if (value > maxValue) {
+                value = maxValue;
+                minSlider.value = value;
+            }
+
+            this.filters.dividendMin = value;
+            minDisplay.textContent = `${value.toFixed(1)}%`;
+            updateRange();
+            await this.render();
+        });
+
+        maxSlider.addEventListener('input', async (e) => {
+            let value = parseFloat(e.target.value);
+            const minValue = parseFloat(minSlider.value);
+
+            if (value < minValue) {
+                value = minValue;
+                maxSlider.value = value;
+            }
+
+            this.filters.dividendMax = value;
+            maxDisplay.textContent = `${value.toFixed(1)}%`;
+            updateRange();
+            await this.render();
+        });
     },
 
     /**
@@ -113,6 +293,9 @@ const Sidebar = {
             }
 
             await this.render();
+
+            // Reason: Initialize filter options after stocks are loaded
+            this.initializeFilterOptions();
         } catch (error) {
             console.error('Failed to load S&P 500 stocks:', error);
         }
@@ -500,6 +683,38 @@ const Sidebar = {
     },
 
     /**
+     * Apply filters to stocks
+     * @param {Array} stocks - Array of stocks to filter
+     * @returns {Array} Filtered stocks
+     */
+    applyFilters(stocks) {
+        return stocks.filter(stock => {
+            // Reason: Filter by stock status (added/not-added/all)
+            if (this.filters.stockStatus === 'added' && !stock.hasChartData) {
+                return false;
+            }
+            if (this.filters.stockStatus === 'not-added' && stock.hasChartData) {
+                return false;
+            }
+
+            // Reason: Filter by sector if any sectors are excluded
+            if (this.filters.sectors.size > 0 && this.filters.sectors.has(stock.sector)) {
+                return false;
+            }
+
+            // Reason: Filter by dividend yield range
+            if (stock.overview && stock.overview.dividendYield !== null && stock.overview.dividendYield !== undefined) {
+                const yieldPercent = stock.overview.dividendYield * 100;
+                if (yieldPercent < this.filters.dividendMin || yieldPercent > this.filters.dividendMax) {
+                    return false;
+                }
+            }
+
+            return true;
+        });
+    },
+
+    /**
      * Render the sidebar
      */
     async render() {
@@ -513,8 +728,16 @@ const Sidebar = {
         // Sort stocks
         await this.sortStocks();
 
+        // Reason: Apply filters to get visible stocks
+        const visibleStocks = this.applyFilters(this.loadedStocks);
+
+        if (visibleStocks.length === 0) {
+            content.innerHTML = '<div class="sidebar-empty">No stocks match the current filters</div>';
+            return;
+        }
+
         // Render stock items
-        content.innerHTML = this.loadedStocks.map(stock => {
+        content.innerHTML = visibleStocks.map(stock => {
             const displayValue = this.getDisplayValue(stock);
             // Reason: Determine positive/negative based on current sort type
             const isPositive = this.getIsPositive(stock);

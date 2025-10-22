@@ -49,6 +49,60 @@
             </div>
         </aside>
 
+        <!-- Filter Panel -->
+        <div id="filterPanel" class="filter-panel">
+            <div class="filter-panel-header">
+                <h3>Filter Options</h3>
+            </div>
+            <div class="filter-panel-content">
+                <div class="filter-option">
+                    <div class="filter-option-header" data-filter="stock-status">
+                        <span>Stock Status</span>
+                        <i class="fas fa-chevron-down"></i>
+                    </div>
+                    <div class="filter-option-content" id="stockStatusFilterContent">
+                        <div class="toggle-container">
+                            <input type="radio" id="toggle-all" name="stock-status-toggle" value="all" checked>
+                            <input type="radio" id="toggle-added" name="stock-status-toggle" value="added">
+                            <input type="radio" id="toggle-not-added" name="stock-status-toggle" value="not-added">
+                            <label for="toggle-all" class="toggle-label">All</label>
+                            <label for="toggle-added" class="toggle-label">Added</label>
+                            <label for="toggle-not-added" class="toggle-label">Not Added</label>
+                            <div class="toggle-slider"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="filter-option">
+                    <div class="filter-option-header" data-filter="sector">
+                        <span>Sector</span>
+                        <i class="fas fa-chevron-down"></i>
+                    </div>
+                    <div class="filter-option-content" id="sectorFilterContent">
+                    </div>
+                </div>
+                <div class="filter-option">
+                    <div class="filter-option-header" data-filter="dividend">
+                        <span>Dividend Yield</span>
+                        <i class="fas fa-chevron-down"></i>
+                    </div>
+                    <div class="filter-option-content" id="dividendFilterContent">
+                        <div class="dividend-slider-container">
+                            <div class="dividend-range-display">
+                                <span id="dividendMinDisplay">0%</span>
+                                <span id="dividendMaxDisplay">10%</span>
+                            </div>
+                            <div class="range-slider">
+                                <input type="range" id="dividendMinSlider" class="range-slider__input" min="0" max="100" step="0.1" value="0">
+                                <input type="range" id="dividendMaxSlider" class="range-slider__input" min="0" max="100" step="0.1" value="100">
+                                <div class="range-slider__track"></div>
+                                <div class="range-slider__range" id="dividendRange"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Main Content -->
         <div class="container">
         <!-- Header -->
@@ -58,6 +112,19 @@
                 <div class="stock-info">
                     <span class="symbol" id="symbol">AAPL</span>
                     <span class="date-range" id="dateRange">Loading...</span>
+                </div>
+            </div>
+            <div class="header-clock">
+                <div class="clock-container">
+                    <div class="clock-display" id="clockDisplay">00:00</div>
+                </div>
+                <div class="clock-controls">
+                    <button id="clockPrecisionUp" class="clock-control-btn" title="Increase Precision">
+                        <i class="fas fa-chevron-up"></i>
+                    </button>
+                    <button id="clockPrecisionDown" class="clock-control-btn" title="Decrease Precision">
+                        <i class="fas fa-chevron-down"></i>
+                    </button>
                 </div>
             </div>
             <div class="header-actions">
@@ -137,6 +204,7 @@
     <script src="js/chart.js"></script>
     <script src="js/stock-selector.js"></script>
     <script src="js/sidebar.js"></script>
+    <script src="js/clock.js"></script>
     <script src="js/app.js"></script>
 </body>
 </html>
