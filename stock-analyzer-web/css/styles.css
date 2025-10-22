@@ -886,6 +886,125 @@ body {
     background-color: transparent;
 }
 
+/* Fetch Data Panel */
+.fetch-data-panel {
+    display: none;
+    position: fixed;
+    left: 280px;
+    top: 0;
+    width: 300px;
+    height: 100vh;
+    background-color: #16181c;
+    border-right: 1px solid #2f3336;
+    z-index: 998;
+    overflow-y: auto;
+}
+
+.fetch-data-panel.open {
+    display: block;
+}
+
+.fetch-data-panel-header {
+    padding: 20px;
+    border-bottom: 1px solid #2f3336;
+}
+
+.fetch-data-panel-header h3 {
+    margin: 0 0 15px 0;
+    color: #e7e9ea;
+    font-size: 18px;
+}
+
+.fetch-data-panel-header .btn {
+    width: 100%;
+}
+
+.fetch-data-panel-content {
+    padding: 10px 0;
+}
+
+/* Fetch Data Hierarchical List */
+.fetch-sector-item,
+.fetch-subsector-item,
+.fetch-stock-item {
+    border-bottom: 1px solid #2f3336;
+}
+
+.fetch-item-header {
+    display: flex;
+    align-items: center;
+    padding: 12px 15px;
+    gap: 10px;
+    transition: background-color 0.2s;
+}
+
+.fetch-item-header:hover {
+    background-color: #1a1d21;
+}
+
+.fetch-item-checkbox {
+    cursor: pointer;
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+}
+
+.fetch-item-label {
+    flex: 1;
+    color: #e7e9ea;
+    font-size: 14px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.fetch-item-expand {
+    cursor: pointer;
+    color: #71767b;
+    transition: color 0.2s;
+    font-size: 14px;
+    flex-shrink: 0;
+}
+
+.fetch-item-expand:hover {
+    color: #1d9bf0;
+}
+
+.fetch-subsector-list,
+.fetch-stock-list {
+    display: none;
+    background-color: rgba(0, 0, 0, 0.2);
+}
+
+.fetch-subsector-list.expanded,
+.fetch-stock-list.expanded {
+    display: block;
+}
+
+.fetch-subsector-item .fetch-item-header {
+    padding-left: 35px;
+}
+
+.fetch-stock-item .fetch-item-header {
+    padding-left: 55px;
+}
+
+.fetch-stock-item .fetch-item-label {
+    font-size: 13px;
+}
+
+.fetch-stock-item.has-financial-data {
+    background-color: rgba(0, 186, 124, 0.15);
+    border-left: 3px solid #00ba7c;
+}
+
+.fetch-stock-item.has-financial-data .fetch-item-header {
+    background-color: transparent;
+}
+
+.fetch-stock-item.has-financial-data .fetch-item-header:hover {
+    background-color: rgba(0, 186, 124, 0.25);
+}
+
 /* Filter Panel */
 .filter-panel {
     display: none;

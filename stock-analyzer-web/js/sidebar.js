@@ -17,6 +17,7 @@ const Sidebar = {
     async init() {
         this.setupEventListeners();
         await this.loadAllSP500Stocks();
+        this.populateFetchDataPanel();
     },
 
     /**
@@ -80,6 +81,15 @@ const Sidebar = {
                 // Re-render with new sort
                 await this.render();
             });
+        });
+
+        // Fetch data button toggle
+        const fetchDataButton = document.getElementById('fetchDataButton');
+        const fetchDataPanel = document.getElementById('fetchDataPanel');
+
+        fetchDataButton.addEventListener('click', (e) => {
+            e.stopPropagation();
+            fetchDataPanel.classList.toggle('open');
         });
 
         // Filter button toggle
@@ -909,5 +919,203 @@ const Sidebar = {
     async updateAfterLoad(symbol) {
         await this.addStockToSidebar(symbol);
         await this.render();
+    },
+
+    /**
+     * Populate fetch data panel with hierarchical sector/subsector/stock structure
+     */
+    populateFetchDataPanel() {
+        const content = document.getElementById('fetchDataContent');
+
+        // Reason: Organize stocks by sector and subsector
+        const hierarchy = {};
+
+        StockSelector.stocks.forEach(stock => {
+            if (!hierarchy[stock.sector]) {
+                hierarchy[stock.sector] = {};
+            }
+            if (!hierarchy[stock.sector][stock.subIndustry]) {
+                hierarchy[stock.sector][stock.subIndustry] = [];
+            }
+            hierarchy[stock.sector][stock.subIndustry].push(stock);
+        });
+
+        // Build HTML
+        let html = '';
+        const sectors = Object.keys(hierarchy).sort();
+
+        sectors.forEach(sector => {
+            const sectorId = sector.replace(/\s+/g, '-').toLowerCase();
+            html += `
+                <div class="fetch-sector-item" data-sector="${sector}">
+                    <div class="fetch-item-header">
+                        <input type="checkbox" class="fetch-item-checkbox sector-checkbox" data-sector="${sector}">
+                        <span class="fetch-item-label">${sector}</span>
+                        <i class="fas fa-expand-alt fetch-item-expand" data-action="toggle-sector" data-sector="${sector}"></i>
+                    </div>
+                    <div class="fetch-subsector-list" data-sector="${sector}">
+            `;
+
+            const subsectors = Object.keys(hierarchy[sector]).sort();
+            subsectors.forEach(subsector => {
+                const subsectorId = subsector.replace(/\s+/g, '-').toLowerCase();
+                html += `
+                    <div class="fetch-subsector-item" data-subsector="${subsector}">
+                        <div class="fetch-item-header">
+                            <input type="checkbox" class="fetch-item-checkbox subsector-checkbox" data-sector="${sector}" data-subsector="${subsector}">
+                            <span class="fetch-item-label">${subsector}</span>
+                            <i class="fas fa-expand-alt fetch-item-expand" data-action="toggle-subsector" data-sector="${sector}" data-subsector="${subsector}"></i>
+                        </div>
+                        <div class="fetch-stock-list" data-subsector="${subsector}">
+                `;
+
+                hierarchy[sector][subsector].forEach(stock => {
+                    // Reason: Check if this stock has financial data loaded
+                    const loadedStock = this.loadedStocks.find(s => s.symbol === stock.symbol);
+                    const hasFinancialData = loadedStock && loadedStock.overview && loadedStock.incomeStatements;
+                    const dataLoadedClass = hasFinancialData ? 'has-financial-data' : '';
+
+                    html += `
+                        <div class="fetch-stock-item ${dataLoadedClass}" data-symbol="${stock.symbol}">
+                            <div class="fetch-item-header">
+                                <input type="checkbox" class="fetch-item-checkbox stock-checkbox" data-symbol="${stock.symbol}" data-sector="${sector}" data-subsector="${subsector}">
+                                <span class="fetch-item-label">${stock.symbol} - ${stock.name}</span>
+                            </div>
+                        </div>
+                    `;
+                });
+
+                html += `
+                        </div>
+                    </div>
+                `;
+            });
+
+            html += `
+                    </div>
+                </div>
+            `;
+        });
+
+        content.innerHTML = html;
+
+        // Add event listeners
+        this.setupFetchDataEventListeners();
+    },
+
+    /**
+     * Setup event listeners for fetch data panel
+     */
+    setupFetchDataEventListeners() {
+        // Toggle sector expansion
+        document.querySelectorAll('[data-action="toggle-sector"]').forEach(icon => {
+            icon.addEventListener('click', (e) => {
+                const sector = e.target.dataset.sector;
+                const list = document.querySelector(`.fetch-subsector-list[data-sector="${sector}"]`);
+                list.classList.toggle('expanded');
+
+                // Toggle icon
+                if (list.classList.contains('expanded')) {
+                    e.target.classList.remove('fa-expand-alt');
+                    e.target.classList.add('fa-down-left-and-up-right-to-center');
+                } else {
+                    e.target.classList.remove('fa-down-left-and-up-right-to-center');
+                    e.target.classList.add('fa-expand-alt');
+                }
+            });
+        });
+
+        // Toggle subsector expansion
+        document.querySelectorAll('[data-action="toggle-subsector"]').forEach(icon => {
+            icon.addEventListener('click', (e) => {
+                const subsector = e.target.dataset.subsector;
+                const list = document.querySelector(`.fetch-stock-list[data-subsector="${subsector}"]`);
+                list.classList.toggle('expanded');
+
+                // Toggle icon
+                if (list.classList.contains('expanded')) {
+                    e.target.classList.remove('fa-expand-alt');
+                    e.target.classList.add('fa-down-left-and-up-right-to-center');
+                } else {
+                    e.target.classList.remove('fa-down-left-and-up-right-to-center');
+                    e.target.classList.add('fa-expand-alt');
+                }
+            });
+        });
+
+        // Sector checkbox - select all subsectors and stocks
+        document.querySelectorAll('.sector-checkbox').forEach(checkbox => {
+            checkbox.addEventListener('change', (e) => {
+                const sector = e.target.dataset.sector;
+                const isChecked = e.target.checked;
+
+                // Check/uncheck all subsectors and stocks in this sector
+                document.querySelectorAll(`.subsector-checkbox[data-sector="${sector}"]`).forEach(cb => {
+                    cb.checked = isChecked;
+                });
+                document.querySelectorAll(`.stock-checkbox[data-sector="${sector}"]`).forEach(cb => {
+                    cb.checked = isChecked;
+                });
+            });
+        });
+
+        // Subsector checkbox - select all stocks
+        document.querySelectorAll('.subsector-checkbox').forEach(checkbox => {
+            checkbox.addEventListener('change', (e) => {
+                const sector = e.target.dataset.sector;
+                const subsector = e.target.dataset.subsector;
+                const isChecked = e.target.checked;
+
+                // Check/uncheck all stocks in this subsector
+                document.querySelectorAll(`.stock-checkbox[data-subsector="${subsector}"]`).forEach(cb => {
+                    cb.checked = isChecked;
+                });
+            });
+        });
+
+        // Fetch button
+        document.getElementById('fetchSelectedDataButton').addEventListener('click', async () => {
+            await this.fetchSelectedStocks();
+        });
+    },
+
+    /**
+     * Fetch financial data for selected stocks
+     */
+    async fetchSelectedStocks() {
+        const selectedStocks = [];
+        document.querySelectorAll('.stock-checkbox:checked').forEach(checkbox => {
+            selectedStocks.push(checkbox.dataset.symbol);
+        });
+
+        if (selectedStocks.length === 0) {
+            alert('Please select at least one stock to fetch data for.');
+            return;
+        }
+
+        const button = document.getElementById('fetchSelectedDataButton');
+        button.disabled = true;
+        button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Fetching...';
+
+        let successCount = 0;
+        let errorCount = 0;
+
+        for (const symbol of selectedStocks) {
+            try {
+                await this.fetchFinancialData(symbol);
+                successCount++;
+            } catch (error) {
+                console.error(`Failed to fetch data for ${symbol}:`, error);
+                errorCount++;
+            }
+        }
+
+        button.disabled = false;
+        button.innerHTML = '<i class="fas fa-cloud-download-alt"></i> Fetch Data';
+
+        // Reason: Refresh the fetch data panel to show updated green backgrounds
+        this.populateFetchDataPanel();
+
+        alert(`Fetch complete!\nSuccess: ${successCount}\nErrors: ${errorCount}`);
     }
 };
