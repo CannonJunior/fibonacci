@@ -81,29 +81,11 @@ const App = {
         this.hideError();
 
         try {
-            // Fetch data
-            this.candles = await API.fetchDailyData(symbol);
-
-            if (!this.candles || this.candles.length === 0) {
-                throw new Error('No data received from API');
-            }
-
-            // Calculate Fibonacci
-            this.fibonacci = Fibonacci.calculate(this.candles);
-
-            // Update UI
-            this.updatePriceInfo();
-            this.updateDateRange();
-            this.updateFibonacciPanel();
-
-            // Render chart
-            Chart.render(this.candles, this.fibonacci);
-
-            // Update sidebar with new stock
-            await Sidebar.updateAfterLoad(symbol);
+            // Reason: Use consolidated function that fetches both daily and financial data
+            await Sidebar.fetchCompleteStockData(symbol, true);
 
             this.hideLoading();
-            console.log(`Loaded ${this.candles.length} candles for ${symbol}`);
+            console.log(`Loaded complete data for ${symbol}`);
         } catch (error) {
             console.error('Failed to load data:', error);
             this.showError(error.message);

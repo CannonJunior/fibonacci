@@ -629,12 +629,12 @@ body {
     border-radius: 12px;
     padding: 20px;
     margin-bottom: 20px;
-    min-height: 600px;
+    min-height: 800px;
 }
 
 #chart {
     width: 100%;
-    height: 600px;
+    height: 800px;
     cursor: grab;
 }
 
@@ -1315,6 +1315,166 @@ body {
     50% {
         background-position: 100% 50%;
     }
+}
+
+/* Sector Summary Cards */
+.sector-cards-container {
+    display: flex;
+    flex-direction: row;
+    gap: 12px;
+    padding: 12px 20px;
+    background-color: #16181c;
+    border-bottom: 1px solid #2f3336;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+}
+
+.sector-card {
+    flex: 0 0 auto;
+    min-width: 120px;
+    padding: 12px 16px;
+    border-radius: 8px;
+    background-color: #2f3336;
+    border: 2px solid;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-align: center;
+}
+
+.sector-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+.sector-card-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: #e7e9ea;
+    margin-bottom: 6px;
+    white-space: nowrap;
+}
+
+.sector-card-count {
+    font-size: 11px;
+    color: #8b98a5;
+}
+
+/* Unique sector colors */
+.sector-card[data-sector="Information Technology"] {
+    border-color: #1d9bf0;
+    background: linear-gradient(135deg, rgba(29, 155, 240, 0.1) 0%, rgba(29, 155, 240, 0.05) 100%);
+}
+
+.sector-card[data-sector="Health Care"] {
+    border-color: #00ba7c;
+    background: linear-gradient(135deg, rgba(0, 186, 124, 0.1) 0%, rgba(0, 186, 124, 0.05) 100%);
+}
+
+.sector-card[data-sector="Financials"] {
+    border-color: #f91880;
+    background: linear-gradient(135deg, rgba(249, 24, 128, 0.1) 0%, rgba(249, 24, 128, 0.05) 100%);
+}
+
+.sector-card[data-sector="Consumer Discretionary"] {
+    border-color: #ff9500;
+    background: linear-gradient(135deg, rgba(255, 149, 0, 0.1) 0%, rgba(255, 149, 0, 0.05) 100%);
+}
+
+.sector-card[data-sector="Communication Services"] {
+    border-color: #bf5af2;
+    background: linear-gradient(135deg, rgba(191, 90, 242, 0.1) 0%, rgba(191, 90, 242, 0.05) 100%);
+}
+
+.sector-card[data-sector="Industrials"] {
+    border-color: #ffd60a;
+    background: linear-gradient(135deg, rgba(255, 214, 10, 0.1) 0%, rgba(255, 214, 10, 0.05) 100%);
+}
+
+.sector-card[data-sector="Consumer Staples"] {
+    border-color: #32d74b;
+    background: linear-gradient(135deg, rgba(50, 215, 75, 0.1) 0%, rgba(50, 215, 75, 0.05) 100%);
+}
+
+.sector-card[data-sector="Energy"] {
+    border-color: #ff3b30;
+    background: linear-gradient(135deg, rgba(255, 59, 48, 0.1) 0%, rgba(255, 59, 48, 0.05) 100%);
+}
+
+.sector-card[data-sector="Utilities"] {
+    border-color: #64d2ff;
+    background: linear-gradient(135deg, rgba(100, 210, 255, 0.1) 0%, rgba(100, 210, 255, 0.05) 100%);
+}
+
+.sector-card[data-sector="Real Estate"] {
+    border-color: #ac8e68;
+    background: linear-gradient(135deg, rgba(172, 142, 104, 0.1) 0%, rgba(172, 142, 104, 0.05) 100%);
+}
+
+.sector-card[data-sector="Materials"] {
+    border-color: #8e8e93;
+    background: linear-gradient(135deg, rgba(142, 142, 147, 0.1) 0%, rgba(142, 142, 147, 0.05) 100%);
+}
+
+/* Subsector Summary Cards */
+.subsector-cards-container {
+    display: flex;
+    flex-direction: row;
+    gap: 12px;
+    padding: 12px 20px;
+    background-color: #16181c;
+    border-bottom: 1px solid #2f3336;
+    overflow-x: auto;
+    flex-wrap: wrap;
+}
+
+.subsector-card {
+    flex: 0 0 auto;
+    min-width: 180px;
+    padding: 12px 16px;
+    border-radius: 8px;
+    background-color: #2f3336;
+    border-left: 4px solid;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    position: relative;
+}
+
+.subsector-card:hover {
+    transform: translateX(4px);
+    background-color: #38393d;
+}
+
+.subsector-card.active {
+    background-color: rgba(29, 155, 240, 0.15);
+    box-shadow: 0 0 10px rgba(29, 155, 240, 0.3);
+}
+
+.subsector-card.active::after {
+    content: '✓';
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    color: #1d9bf0;
+    font-weight: bold;
+    font-size: 14px;
+}
+
+.subsector-card-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: #e7e9ea;
+    margin-bottom: 4px;
+}
+
+.subsector-card-sector {
+    font-size: 11px;
+    color: #8b98a5;
+    margin-bottom: 6px;
+}
+
+.subsector-card-count {
+    font-size: 11px;
+    color: #8b98a5;
 }
 
 /* Responsive */

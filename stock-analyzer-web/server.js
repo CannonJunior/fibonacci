@@ -213,6 +213,39 @@ const server = http.createServer((req, res) => {
         return;
     }
 
+    // API endpoint to save subsector performance data
+    if (pathname === '/api/save-subsector-performance' && req.method === 'POST') {
+        let body = '';
+        req.on('data', chunk => { body += chunk.toString(); });
+        req.on('end', () => {
+            try {
+                const { subsectorKey, sector, subsector, performanceData } = JSON.parse(body);
+                db.saveSubsectorPerformance(subsectorKey, sector, subsector, performanceData);
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: true }));
+            } catch (error) {
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: error.message }));
+            }
+        });
+        return;
+    }
+
+    // API endpoint to get subsector performance data
+    if (pathname === '/api/get-subsector-performance') {
+        const subsectorKey = parsedUrl.query.subsectorKey;
+        if (!subsectorKey) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'subsectorKey parameter required' }));
+            return;
+        }
+
+        const performanceData = db.getSubsectorPerformance(subsectorKey);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ performanceData }));
+        return;
+    }
+
     // Serve static files
     let filePath = '.' + req.url;
     if (filePath === './') {

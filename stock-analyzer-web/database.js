@@ -85,11 +85,26 @@ function initializeDatabase() {
         )
     `);
 
+    // Reason: Table for subsector aggregated performance data (percentage-based)
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS subsector_performance (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            subsector_key TEXT NOT NULL,
+            sector TEXT NOT NULL,
+            subsector TEXT NOT NULL,
+            date TEXT NOT NULL,
+            percent_change REAL NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(subsector_key, date)
+        )
+    `);
+
     // Create indices for faster lookups
     db.exec(`
         CREATE INDEX IF NOT EXISTS idx_daily_symbol_date ON daily_prices(symbol, date);
         CREATE INDEX IF NOT EXISTS idx_intraday_symbol_timestamp ON intraday_prices(symbol, timestamp);
         CREATE INDEX IF NOT EXISTS idx_income_symbol_date ON income_statements(symbol, fiscal_date_ending);
+        CREATE INDEX IF NOT EXISTS idx_subsector_key_date ON subsector_performance(subsector_key, date);
     `);
 
     console.log('Database initialized at:', DB_PATH);
@@ -318,6 +333,66 @@ function hasIntradayData(symbol, date) {
     return result.count > 0;
 }
 
+/**
+ * Save subsector performance data
+ * @param {string} subsectorKey - Unique subsector key (sector|subsector)
+ * @param {string} sector - Sector name
+ * @param {string} subsector - Subsector name
+ * @param {Array} performanceData - Array of {date, percentChange}
+ */
+function saveSubsectorPerformance(subsectorKey, sector, subsector, performanceData) {
+    const stmt = db.prepare(`
+        INSERT OR REPLACE INTO subsector_performance (
+            subsector_key, sector, subsector, date, percent_change
+        ) VALUES (?, ?, ?, ?, ?)
+    `);
+
+    const insertMany = db.transaction((data) => {
+        for (const point of data) {
+            stmt.run(
+                subsectorKey,
+                sector,
+                subsector,
+                point.date,
+                point.percentChange
+            );
+        }
+    });
+
+    insertMany(performanceData);
+    console.log(`Saved ${performanceData.length} performance data points for ${subsectorKey}`);
+}
+
+/**
+ * Get subsector performance data
+ * @param {string} subsectorKey - Unique subsector key (sector|subsector)
+ * @returns {Array|null} Array of performance data or null
+ */
+function getSubsectorPerformance(subsectorKey) {
+    const stmt = db.prepare(`
+        SELECT sector, subsector, date, percent_change as percentChange
+        FROM subsector_performance
+        WHERE subsector_key = ?
+        ORDER BY date ASC
+    `);
+
+    const rows = stmt.all(subsectorKey);
+    return rows.length > 0 ? rows : null;
+}
+
+/**
+ * Check if subsector performance data exists
+ * @param {string} subsectorKey - Unique subsector key (sector|subsector)
+ * @returns {boolean} True if data exists
+ */
+function hasSubsectorPerformance(subsectorKey) {
+    const stmt = db.prepare(`
+        SELECT COUNT(*) as count FROM subsector_performance WHERE subsector_key = ?
+    `);
+    const result = stmt.get(subsectorKey);
+    return result.count > 0;
+}
+
 // Initialize database on module load
 initializeDatabase();
 
@@ -332,5 +407,8 @@ module.exports = {
     saveCompanyOverview,
     getCompanyOverview,
     saveIncomeStatements,
-    getIncomeStatements
+    getIncomeStatements,
+    saveSubsectorPerformance,
+    getSubsectorPerformance,
+    hasSubsectorPerformance
 };

@@ -5,6 +5,7 @@ const Chart = {
     height: 0,
     xScale: null,
     yScale: null,
+    yScalePercent: null,  // Right y-axis for subsector percentages
     xScaleOriginal: null,
     data: null,
     fibonacci: null,
@@ -17,6 +18,7 @@ const Chart = {
     isIntradayMode: false,
     dailyData: null,
     dailyFibonacci: null,
+    activeSubsectors: new Map(),  // Map of subsectorKey -> {data, color, visible}
 
     /**
      * Initialize and render the chart
@@ -37,7 +39,7 @@ const Chart = {
         // Reason: Ensure we get the full available width, accounting for padding
         const containerWidth = container.clientWidth - 40; // 20px padding on each side
         this.width = containerWidth - CONFIG.chart.margin.left - CONFIG.chart.margin.right;
-        this.height = 600 - CONFIG.chart.margin.top - CONFIG.chart.margin.bottom;
+        this.height = 800 - CONFIG.chart.margin.top - CONFIG.chart.margin.bottom;
 
         // Create SVG
         this.svg = d3.select('#chart')
@@ -56,6 +58,9 @@ const Chart = {
         if (this.showFibonacci && this.fibonacci) {
             this.drawFibonacci();
         }
+
+        // Reason: Draw subsector lines if any are active
+        this.drawSubsectors();
 
         // Setup zoom behavior
         this.setupZoom();
@@ -80,6 +85,25 @@ const Chart = {
 
         this.yScale = d3.scaleLinear()
             .domain([yMin - yPadding, yMax + yPadding])
+            .range([this.height, 0]);
+
+        // Reason: Right Y scale for subsector percentage data
+        // Find min/max across all active subsectors
+        let percentMin = 0;
+        let percentMax = 0;
+        this.activeSubsectors.forEach(subsector => {
+            if (subsector.data && subsector.data.length > 0) {
+                const min = d3.min(subsector.data, d => d.percentChange);
+                const max = d3.max(subsector.data, d => d.percentChange);
+                percentMin = Math.min(percentMin, min);
+                percentMax = Math.max(percentMax, max);
+            }
+        });
+
+        // Add padding
+        const percentPadding = Math.max(5, (percentMax - percentMin) * 0.1);
+        this.yScalePercent = d3.scaleLinear()
+            .domain([percentMin - percentPadding, percentMax + percentPadding])
             .range([this.height, 0]);
     },
 
@@ -128,14 +152,24 @@ const Chart = {
                 .ticks(8)
             );
 
-        // Right Y axis
-        this.svg.append('g')
-            .attr('class', 'axis')
-            .attr('transform', `translate(${this.width},0)`)
-            .call(d3.axisRight(this.yScale)
-                .tickFormat(d => `$${d.toFixed(2)}`)
-                .ticks(8)
-            );
+        // Right Y axis - Reason: Show percentage scale when subsectors are active
+        if (this.activeSubsectors.size > 0) {
+            this.svg.append('g')
+                .attr('class', 'axis axis-percent')
+                .attr('transform', `translate(${this.width},0)`)
+                .call(d3.axisRight(this.yScalePercent)
+                    .tickFormat(d => `${d.toFixed(1)}%`)
+                    .ticks(8)
+                );
+        } else {
+            this.svg.append('g')
+                .attr('class', 'axis')
+                .attr('transform', `translate(${this.width},0)`)
+                .call(d3.axisRight(this.yScale)
+                    .tickFormat(d => `$${d.toFixed(2)}`)
+                    .ticks(8)
+                );
+        }
     },
 
     /**
@@ -596,5 +630,86 @@ const Chart = {
             // Hide the return button
             document.getElementById('returnToDaily').style.display = 'none';
         }
+    },
+
+    /**
+     * Toggle subsector display on/off
+     * @param {string} subsectorKey - Unique subsector key (sector|subsector)
+     */
+    async toggleSubsector(subsectorKey) {
+        if (this.activeSubsectors.has(subsectorKey)) {
+            // Remove subsector
+            this.activeSubsectors.delete(subsectorKey);
+        } else {
+            // Fetch subsector data from database
+            try {
+                const response = await fetch(`/api/get-subsector-performance?subsectorKey=${encodeURIComponent(subsectorKey)}`);
+                const result = await response.json();
+
+                if (result.performanceData) {
+                    // Parse dates
+                    const data = result.performanceData.map(d => ({
+                        date: new Date(d.date),
+                        percentChange: d.percentChange,
+                        sector: d.sector,
+                        subsector: d.subsector
+                    }));
+
+                    // Assign a color from Sidebar's sector color scheme
+                    const [sector] = subsectorKey.split('|');
+                    const color = Sidebar.getSectorColor(sector);
+
+                    // Add to active subsectors
+                    this.activeSubsectors.set(subsectorKey, {
+                        data,
+                        color,
+                        visible: true
+                    });
+                }
+            } catch (error) {
+                console.error(`Failed to fetch subsector data for ${subsectorKey}:`, error);
+                return;
+            }
+        }
+
+        // Re-render chart
+        this.render(this.data, this.fibonacci);
+    },
+
+    /**
+     * Draw subsector lines
+     */
+    drawSubsectors() {
+        if (this.activeSubsectors.size === 0) return;
+
+        const line = d3.line()
+            .x(d => this.xScale(d.date))
+            .y(d => this.yScalePercent(d.percentChange))
+            .curve(d3.curveMonotoneX);
+
+        this.activeSubsectors.forEach((subsector, key) => {
+            if (!subsector.visible) return;
+
+            this.svg.append('path')
+                .datum(subsector.data)
+                .attr('class', 'subsector-line')
+                .attr('fill', 'none')
+                .attr('stroke', subsector.color)
+                .attr('stroke-width', 2)
+                .attr('d', line);
+
+            // Add label at the end of the line
+            const lastPoint = subsector.data[subsector.data.length - 1];
+            if (lastPoint) {
+                this.svg.append('text')
+                    .attr('class', 'subsector-label')
+                    .attr('x', this.xScale(lastPoint.date) + 5)
+                    .attr('y', this.yScalePercent(lastPoint.percentChange))
+                    .attr('fill', subsector.color)
+                    .attr('font-size', '11px')
+                    .attr('font-weight', '600')
+                    .text(lastPoint.subsector);
+            }
+        });
     }
 };

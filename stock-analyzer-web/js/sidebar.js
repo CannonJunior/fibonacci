@@ -568,35 +568,131 @@ const Sidebar = {
     },
 
     /**
-     * Fetch financial data for a stock
+     * Check if a stock has complete financial data loaded
+     * @param {Object} stock - Stock object
+     * @returns {boolean} True if stock has both overview and income statements
      */
-    async fetchFinancialData(symbol) {
+    hasCompleteData(stock) {
+        return stock && stock.overview && stock.incomeStatements && stock.hasChartData;
+    },
+
+    /**
+     * Fetch complete stock data (daily prices + financial data)
+     * @param {string} symbol - Stock symbol
+     * @param {boolean} loadChartData - Whether to load chart data and display in main view
+     */
+    async fetchCompleteStockData(symbol, loadChartData = false) {
         try {
-            // Fetch company overview
-            const overview = await API.fetchCompanyOverview(symbol);
+            // 1. Fetch daily price data (this already checks database first)
+            const candles = await API.fetchDailyData(symbol);
 
-            // Fetch income statements
-            const incomeStatements = await API.fetchIncomeStatement(symbol);
+            if (!candles || candles.length === 0) {
+                throw new Error('No price data received');
+            }
 
-            // Calculate YoY changes
+            // 2. Reason: Check database for financial data first before hitting API
+            let overview = null;
+            let incomeStatements = null;
+
+            try {
+                const overviewResponse = await fetch(`/api/get-company-overview?symbol=${symbol}`);
+                const overviewResult = await overviewResponse.json();
+                if (overviewResult.overview) {
+                    overview = {
+                        symbol: overviewResult.overview.symbol,
+                        marketCap: overviewResult.overview.market_cap,
+                        peRatio: overviewResult.overview.pe_ratio,
+                        dividendYield: overviewResult.overview.dividend_yield,
+                        dividendPerShare: overviewResult.overview.dividend_per_share,
+                        week52High: overviewResult.overview.week_52_high,
+                        week52Low: overviewResult.overview.week_52_low,
+                        beta: overviewResult.overview.beta,
+                        eps: overviewResult.overview.eps,
+                        bookValue: overviewResult.overview.book_value,
+                        profitMargin: overviewResult.overview.profit_margin,
+                        operatingMarginTTM: overviewResult.overview.operating_margin_ttm
+                    };
+                }
+
+                const statementsResponse = await fetch(`/api/get-income-statements?symbol=${symbol}`);
+                const statementsResult = await statementsResponse.json();
+                if (statementsResult.statements && statementsResult.statements.length > 0) {
+                    incomeStatements = statementsResult.statements.map(stmt => ({
+                        fiscalDateEnding: stmt.fiscal_date_ending,
+                        totalRevenue: stmt.total_revenue,
+                        operatingExpenses: stmt.operating_expenses,
+                        netIncome: stmt.net_income,
+                        ebitda: stmt.ebitda,
+                        eps: stmt.eps,
+                        grossProfit: stmt.gross_profit
+                    }));
+                }
+            } catch (dbError) {
+                console.log('Database lookup for financial data failed:', dbError.message);
+            }
+
+            // 3. Only fetch from API if data not in database
+            if (!overview) {
+                overview = await API.fetchCompanyOverview(symbol);
+                await this.saveFinancialDataToDatabase(symbol, overview, null);
+            }
+
+            if (!incomeStatements) {
+                incomeStatements = await API.fetchIncomeStatement(symbol);
+                await this.saveFinancialDataToDatabase(symbol, null, incomeStatements);
+            }
+
             const yoyChanges = API.calculateYoYChanges(incomeStatements);
 
-            // Reason: Save to database for persistence
-            await this.saveFinancialDataToDatabase(symbol, overview, incomeStatements);
+            // 4. Update or add stock to loadedStocks
+            await this.addStockToSidebar(symbol, true);
 
-            // Update stock object
+            // Update stock object with all data
             const stock = this.loadedStocks.find(s => s.symbol === symbol);
             if (stock) {
                 stock.overview = overview;
                 stock.incomeStatements = incomeStatements;
                 stock.yoyChanges = yoyChanges;
                 stock.marketCap = overview.marketCap;
+                stock.candles = candles;
+                stock.hasChartData = true;
             }
 
-            // Re-render to update display
+            // 5. If loadChartData is true, update the main chart view
+            if (loadChartData) {
+                CONFIG.stock.symbol = symbol;
+                document.getElementById('symbol').textContent = symbol;
+
+                // Calculate and render chart
+                const fibonacci = Fibonacci.calculate(candles);
+                Chart.render(candles, fibonacci);
+
+                // Update price info
+                App.candles = candles;
+                App.fibonacci = fibonacci;
+                App.updatePriceInfo();
+                App.updateDateRange();
+                App.updateFibonacciPanel();
+            }
+
+            // Re-render sidebar to update display
             await this.render();
 
-            return { overview, incomeStatements, yoyChanges };
+            return { candles, overview, incomeStatements, yoyChanges };
+        } catch (error) {
+            console.error(`Failed to fetch complete data for ${symbol}:`, error);
+            throw error;
+        }
+    },
+
+    /**
+     * Fetch financial data for a stock (legacy method - now calls fetchCompleteStockData)
+     * @deprecated Use fetchCompleteStockData instead
+     */
+    async fetchFinancialData(symbol) {
+        try {
+            await this.fetchCompleteStockData(symbol, false);
+            return true;
         } catch (error) {
             console.error(`Failed to fetch financial data for ${symbol}:`, error);
             alert(`Failed to fetch financial data: ${error.message}`);
@@ -607,26 +703,32 @@ const Sidebar = {
     /**
      * Save financial data to database
      * @param {string} symbol - Stock symbol
-     * @param {Object} overview - Company overview data
-     * @param {Array} incomeStatements - Income statement data
+     * @param {Object} overview - Company overview data (can be null)
+     * @param {Array} incomeStatements - Income statement data (can be null)
      */
     async saveFinancialDataToDatabase(symbol, overview, incomeStatements) {
         try {
-            // Save company overview
-            await fetch('/api/save-company-overview', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ overview })
-            });
+            // Reason: Save company overview only if provided
+            if (overview) {
+                await fetch('/api/save-company-overview', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ overview })
+                });
+            }
 
-            // Save income statements
-            await fetch('/api/save-income-statements', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ symbol, statements: incomeStatements })
-            });
+            // Reason: Save income statements only if provided
+            if (incomeStatements) {
+                await fetch('/api/save-income-statements', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ symbol, statements: incomeStatements })
+                });
+            }
 
-            console.log(`Saved financial data for ${symbol} to database`);
+            if (overview || incomeStatements) {
+                console.log(`Saved financial data for ${symbol} to database`);
+            }
         } catch (error) {
             console.error(`Failed to save financial data for ${symbol}:`, error);
         }
@@ -752,7 +854,8 @@ const Sidebar = {
             // Reason: Determine positive/negative based on current sort type
             const isPositive = this.getIsPositive(stock);
             const isActive = stock.symbol === CONFIG.stock.symbol;
-            const hasData = stock.hasChartData ? 'has-chart-data' : '';
+            // Reason: Use consolidated check for complete data
+            const hasData = this.hasCompleteData(stock) ? 'has-chart-data' : '';
             const isExpanded = stock.isExpanded || false;
             const expandIcon = isExpanded ? 'fa-down-left-and-up-right-to-center' : 'fa-expand-alt';
 
@@ -809,6 +912,9 @@ const Sidebar = {
                 await this.fetchFinancialData(symbol);
             });
         });
+
+        // Reason: Render sector and subsector summary cards
+        this.renderSummaryCards();
     },
 
     /**
@@ -970,9 +1076,9 @@ const Sidebar = {
                 `;
 
                 hierarchy[sector][subsector].forEach(stock => {
-                    // Reason: Check if this stock has financial data loaded
+                    // Reason: Check if this stock has complete data loaded using consolidated check
                     const loadedStock = this.loadedStocks.find(s => s.symbol === stock.symbol);
-                    const hasFinancialData = loadedStock && loadedStock.overview && loadedStock.incomeStatements;
+                    const hasFinancialData = this.hasCompleteData(loadedStock);
                     const dataLoadedClass = hasFinancialData ? 'has-financial-data' : '';
 
                     html += `
@@ -1116,6 +1222,223 @@ const Sidebar = {
         // Reason: Refresh the fetch data panel to show updated green backgrounds
         this.populateFetchDataPanel();
 
+        // Reason: Update sector and subsector summary cards after fetch
+        this.renderSummaryCards();
+
         alert(`Fetch complete!\nSuccess: ${successCount}\nErrors: ${errorCount}`);
+    },
+
+    /**
+     * Get sector color by sector name
+     */
+    getSectorColor(sector) {
+        const colors = {
+            'Information Technology': '#1d9bf0',
+            'Health Care': '#00ba7c',
+            'Financials': '#f91880',
+            'Consumer Discretionary': '#ff9500',
+            'Communication Services': '#bf5af2',
+            'Industrials': '#ffd60a',
+            'Consumer Staples': '#32d74b',
+            'Energy': '#ff3b30',
+            'Utilities': '#64d2ff',
+            'Real Estate': '#ac8e68',
+            'Materials': '#8e8e93'
+        };
+        return colors[sector] || '#8b98a5';
+    },
+
+    /**
+     * Calculate which sectors and subsectors are complete
+     * (all stocks have financial data)
+     */
+    calculateCompleteSectorsAndSubsectors() {
+        const sectorStats = {};
+        const subsectorStats = {};
+
+        // Reason: Organize all stocks by sector and subsector
+        StockSelector.stocks.forEach(stock => {
+            const sector = stock.sector;
+            const subsector = stock.subIndustry;
+
+            // Initialize sector
+            if (!sectorStats[sector]) {
+                sectorStats[sector] = { total: 0, complete: 0 };
+            }
+
+            // Initialize subsector
+            const subsectorKey = `${sector}|${subsector}`;
+            if (!subsectorStats[subsectorKey]) {
+                subsectorStats[subsectorKey] = {
+                    sector: sector,
+                    subsector: subsector,
+                    total: 0,
+                    complete: 0
+                };
+            }
+
+            // Count totals
+            sectorStats[sector].total++;
+            subsectorStats[subsectorKey].total++;
+
+            // Check if this stock has complete data
+            const loadedStock = this.loadedStocks.find(s => s.symbol === stock.symbol);
+            if (loadedStock && this.hasCompleteData(loadedStock)) {
+                sectorStats[sector].complete++;
+                subsectorStats[subsectorKey].complete++;
+            }
+        });
+
+        // Reason: Filter to only complete sectors and subsectors
+        const completeSectors = Object.keys(sectorStats)
+            .filter(sector => sectorStats[sector].total > 0 &&
+                             sectorStats[sector].complete === sectorStats[sector].total)
+            .map(sector => ({
+                name: sector,
+                count: sectorStats[sector].total
+            }));
+
+        const completeSubsectors = Object.values(subsectorStats)
+            .filter(stats => stats.total > 0 && stats.complete === stats.total)
+            .map(stats => ({
+                sector: stats.sector,
+                subsector: stats.subsector,
+                count: stats.total
+            }));
+
+        return { completeSectors, completeSubsectors };
+    },
+
+    /**
+     * Calculate and save subsector aggregated performance data
+     * @param {string} sector - Sector name
+     * @param {string} subsector - Subsector name
+     */
+    async calculateAndSaveSubsectorPerformance(sector, subsector) {
+        const subsectorKey = `${sector}|${subsector}`;
+
+        // Reason: Get all stocks in this subsector with complete data
+        const subsectorStocks = this.loadedStocks.filter(stock =>
+            stock.sector === sector &&
+            stock.subsector === subsector &&
+            this.hasCompleteData(stock)
+        );
+
+        if (subsectorStocks.length === 0) {
+            console.warn(`No stocks with complete data for ${subsectorKey}`);
+            return;
+        }
+
+        // Reason: Get the date range from the first stock (they should all have same range)
+        const firstStock = subsectorStocks[0];
+        if (!firstStock.candles || firstStock.candles.length === 0) {
+            console.warn(`No candle data for ${subsectorKey}`);
+            return;
+        }
+
+        // Reason: Create a map of dates to aggregate percentage changes
+        const dateMap = new Map();
+
+        // Initialize dateMap with all dates from first stock
+        firstStock.candles.forEach(candle => {
+            dateMap.set(candle.date, { date: candle.date, stockChanges: [] });
+        });
+
+        // Reason: For each stock, calculate percentage change from start and add to dateMap
+        subsectorStocks.forEach(stock => {
+            if (!stock.candles || stock.candles.length === 0) return;
+
+            const startPrice = stock.candles[0].close;
+
+            stock.candles.forEach(candle => {
+                const percentChange = ((candle.close - startPrice) / startPrice) * 100;
+                const dateData = dateMap.get(candle.date);
+                if (dateData) {
+                    dateData.stockChanges.push(percentChange);
+                }
+            });
+        });
+
+        // Reason: Calculate average percentage change for each date
+        const performanceData = Array.from(dateMap.values())
+            .map(dateData => ({
+                date: dateData.date,
+                percentChange: dateData.stockChanges.length > 0
+                    ? dateData.stockChanges.reduce((sum, val) => sum + val, 0) / dateData.stockChanges.length
+                    : 0
+            }))
+            .filter(data => data.percentChange !== 0); // Filter out dates with no data
+
+        // Reason: Save to database
+        try {
+            await fetch('/api/save-subsector-performance', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    subsectorKey,
+                    sector,
+                    subsector,
+                    performanceData
+                })
+            });
+            console.log(`Saved performance data for ${subsectorKey}`);
+        } catch (error) {
+            console.error(`Failed to save performance data for ${subsectorKey}:`, error);
+        }
+    },
+
+    /**
+     * Render sector and subsector summary cards
+     */
+    async renderSummaryCards() {
+        const { completeSectors, completeSubsectors } = this.calculateCompleteSectorsAndSubsectors();
+
+        // Reason: Calculate and save subsector performance data for all complete subsectors
+        for (const subsector of completeSubsectors) {
+            await this.calculateAndSaveSubsectorPerformance(subsector.sector, subsector.subsector);
+        }
+
+        // Render sector cards
+        const sectorContainer = document.getElementById('sectorCardsContainer');
+        if (completeSectors.length > 0) {
+            sectorContainer.style.display = 'flex';
+            sectorContainer.innerHTML = completeSectors.map(sector => `
+                <div class="sector-card" data-sector="${sector.name}">
+                    <div class="sector-card-name">${sector.name}</div>
+                    <div class="sector-card-count">${sector.count} stocks</div>
+                </div>
+            `).join('');
+        } else {
+            sectorContainer.style.display = 'none';
+        }
+
+        // Render subsector cards
+        const subsectorContainer = document.getElementById('subsectorCardsContainer');
+        if (completeSubsectors.length > 0) {
+            subsectorContainer.style.display = 'flex';
+            subsectorContainer.innerHTML = completeSubsectors.map(subsector => {
+                const borderColor = this.getSectorColor(subsector.sector);
+                const subsectorKey = `${subsector.sector}|${subsector.subsector}`;
+                return `
+                    <div class="subsector-card" data-subsector-key="${subsectorKey}" style="border-left-color: ${borderColor};">
+                        <div class="subsector-card-name">${subsector.subsector}</div>
+                        <div class="subsector-card-sector">${subsector.sector}</div>
+                        <div class="subsector-card-count">${subsector.count} stocks</div>
+                    </div>
+                `;
+            }).join('');
+
+            // Reason: Add click handlers to subsector cards
+            document.querySelectorAll('.subsector-card').forEach(card => {
+                card.addEventListener('click', async () => {
+                    const subsectorKey = card.dataset.subsectorKey;
+                    await Chart.toggleSubsector(subsectorKey);
+                    // Toggle active class
+                    card.classList.toggle('active');
+                });
+            });
+        } else {
+            subsectorContainer.style.display = 'none';
+        }
     }
 };
