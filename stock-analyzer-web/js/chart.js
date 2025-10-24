@@ -37,9 +37,11 @@ const Chart = {
         const chartElement = document.getElementById('chart');
 
         // Reason: Ensure we get the full available width, accounting for padding
-        const containerWidth = container.clientWidth - 40; // 20px padding on each side
+        // Use window.innerWidth as fallback if container hasn't been laid out yet
+        const rawContainerWidth = container.clientWidth;
+        const containerWidth = rawContainerWidth > 100 ? rawContainerWidth - 40 : window.innerWidth - 100;
         this.width = containerWidth - CONFIG.chart.margin.left - CONFIG.chart.margin.right;
-        this.height = 800 - CONFIG.chart.margin.top - CONFIG.chart.margin.bottom;
+        this.height = 1000 - CONFIG.chart.margin.top - CONFIG.chart.margin.bottom;
 
         // Create SVG
         this.svg = d3.select('#chart')
@@ -637,14 +639,24 @@ const Chart = {
      * @param {string} subsectorKey - Unique subsector key (sector|subsector)
      */
     async toggleSubsector(subsectorKey) {
+        console.log('Chart.toggleSubsector called with:', subsectorKey);
+        console.log('Current active subsectors:', this.activeSubsectors);
+        console.log('this.data:', this.data);
+        console.log('this.fibonacci:', this.fibonacci);
+
         if (this.activeSubsectors.has(subsectorKey)) {
             // Remove subsector
+            console.log('Removing subsector:', subsectorKey);
             this.activeSubsectors.delete(subsectorKey);
         } else {
             // Fetch subsector data from database
+            console.log('Fetching subsector data for:', subsectorKey);
             try {
-                const response = await fetch(`/api/get-subsector-performance?subsectorKey=${encodeURIComponent(subsectorKey)}`);
+                const url = `/api/get-subsector-performance?subsectorKey=${encodeURIComponent(subsectorKey)}`;
+                console.log('Fetching from URL:', url);
+                const response = await fetch(url);
                 const result = await response.json();
+                console.log('API response:', result);
 
                 if (result.performanceData) {
                     // Parse dates
@@ -655,9 +667,13 @@ const Chart = {
                         subsector: d.subsector
                     }));
 
+                    console.log('Parsed data:', data);
+
                     // Assign a color from Sidebar's sector color scheme
                     const [sector] = subsectorKey.split('|');
                     const color = Sidebar.getSectorColor(sector);
+
+                    console.log('Sector:', sector, 'Color:', color);
 
                     // Add to active subsectors
                     this.activeSubsectors.set(subsectorKey, {
@@ -665,6 +681,9 @@ const Chart = {
                         color,
                         visible: true
                     });
+                    console.log('Added to active subsectors. Size now:', this.activeSubsectors.size);
+                } else {
+                    console.log('No performanceData in result');
                 }
             } catch (error) {
                 console.error(`Failed to fetch subsector data for ${subsectorKey}:`, error);
@@ -673,6 +692,7 @@ const Chart = {
         }
 
         // Re-render chart
+        console.log('Re-rendering chart with data:', this.data, 'and fibonacci:', this.fibonacci);
         this.render(this.data, this.fibonacci);
     },
 

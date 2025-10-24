@@ -1320,7 +1320,7 @@ const Sidebar = {
         // Reason: Get all stocks in this subsector with complete data
         const subsectorStocks = this.loadedStocks.filter(stock =>
             stock.sector === sector &&
-            stock.subsector === subsector &&
+            stock.subIndustry === subsector &&
             this.hasCompleteData(stock)
         );
 
@@ -1432,6 +1432,9 @@ const Sidebar = {
             document.querySelectorAll('.subsector-card').forEach(card => {
                 card.addEventListener('click', async () => {
                     const subsectorKey = card.dataset.subsectorKey;
+                    console.log('Subsector card clicked:', subsectorKey);
+                    console.log('Chart object:', Chart);
+                    console.log('Chart.toggleSubsector:', Chart.toggleSubsector);
                     await Chart.toggleSubsector(subsectorKey);
                     // Toggle active class
                     card.classList.toggle('active');
