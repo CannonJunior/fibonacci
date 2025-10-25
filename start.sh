@@ -143,6 +143,19 @@ fi
 PORT=$(grep "port:" config.yaml | head -n 1 | awk '{print $2}')
 echo -e "${GREEN}✓${NC} Configuration loaded (Port: $PORT)"
 
+# Reason: Check if port is already in use and kill the process
+echo ""
+echo -e "${BLUE}[5.5/6]${NC} Checking port availability..."
+PID=$(lsof -ti:$PORT 2>/dev/null)
+if [ ! -z "$PID" ]; then
+    echo -e "${YELLOW}⚠${NC}  Port $PORT is in use (PID: $PID). Killing process..."
+    kill -9 $PID 2>/dev/null
+    sleep 2
+    echo -e "${GREEN}✓${NC} Port $PORT is now free"
+else
+    echo -e "${GREEN}✓${NC} Port $PORT is available"
+fi
+
 echo ""
 echo -e "${BLUE}[6/6]${NC} Launching application..."
 echo ""

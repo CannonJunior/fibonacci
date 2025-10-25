@@ -3,8 +3,12 @@
 
 cd "$(dirname "$0")"
 
-# Reason: Try to load environment variables from .env file, but continue if not found
-if [ -f "../equity_analyzer/.env" ]; then
+# Reason: Try to load environment variables from keys.sh, .env file, or system environment
+if [ -f "$HOME/keys.sh" ]; then
+    echo "Loading environment variables from ~/keys.sh..."
+    source "$HOME/keys.sh"
+    echo "Environment variables loaded."
+elif [ -f "../equity_analyzer/.env" ]; then
     echo "Loading environment variables from .env file..."
     export $(grep -v '^#' ../equity_analyzer/.env | xargs)
     echo "Environment variables loaded."

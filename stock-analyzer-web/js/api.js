@@ -3,20 +3,35 @@ const API = {
     // Cache for intraday data to prevent repeat fetches
     intradayCache: new Map(),
 
+    // Multi-provider manager
+    providerManager: null,
+
     /**
-     * Fetch daily stock data from database first, then Alpha Vantage if needed
+     * Initialize the multi-provider system
+     */
+    initProviders() {
+        if (!this.providerManager) {
+            this.providerManager = new APIProviderManager();
+        }
+    },
+
+    /**
+     * Fetch daily stock data from database first, then use multi-provider system
      * @param {string} symbol - Stock symbol (e.g., 'AAPL')
      * @param {string} outputSize - 'compact' (100 days) or 'full' (20+ years)
      * @returns {Promise<Array>} Array of candle data
      */
     async fetchDailyData(symbol = CONFIG.stock.symbol, outputSize = 'full') {
+        // Initialize provider manager if not already done
+        this.initProviders();
+
         // Reason: Check database first to avoid unnecessary API calls
         try {
             const dbResponse = await fetch(`/api/get-daily?symbol=${symbol}`);
             const dbResult = await dbResponse.json();
 
             if (dbResult.data && dbResult.data.length > 0) {
-                console.log(`Loaded ${dbResult.data.length} candles for ${symbol} from database`);
+                console.log(`✓ Loaded ${dbResult.data.length} candles for ${symbol} from database`);
                 // Convert date strings back to Date objects
                 return dbResult.data.map(candle => ({
                     ...candle,
@@ -27,55 +42,20 @@ const API = {
             console.log('Database lookup failed, fetching from API:', error.message);
         }
 
-        // Fetch from Alpha Vantage API
-        const url = `${CONFIG.api.baseUrl}?function=TIME_SERIES_DAILY&symbol=${symbol}&outputsize=${outputSize}&apikey=${CONFIG.api.key}`;
-
+        // Fetch from multi-provider system with automatic fallback
         try {
-            console.log(`Fetching ${symbol} data from Alpha Vantage API...`);
-            const response = await fetch(url);
-            const data = await response.json();
+            console.log(`🔄 Fetching ${symbol} data using multi-provider system...`);
+            const candles = await this.providerManager.fetchDailyData(symbol);
 
-            // Check for API errors
-            if (data['Error Message']) {
-                throw new Error(`API Error: ${data['Error Message']}`);
+            if (candles && candles.length > 0) {
+                // Reason: Save to database for future use
+                this.saveDailyDataToDatabase(symbol, candles);
+                return candles;
             }
 
-            if (data['Note']) {
-                throw new Error(`API Rate Limit: ${data['Note']}. Please add your own API key in js/config.js`);
-            }
-
-            const timeSeries = data['Time Series (Daily)'];
-            if (!timeSeries) {
-                throw new Error('Invalid API response: Missing time series data. Please check your API key.');
-            }
-
-            // Convert to array format
-            const candles = [];
-            for (const [dateStr, values] of Object.entries(timeSeries)) {
-                candles.push({
-                    date: new Date(dateStr),
-                    open: parseFloat(values['1. open']),
-                    high: parseFloat(values['2. high']),
-                    low: parseFloat(values['3. low']),
-                    close: parseFloat(values['4. close']),
-                    volume: parseInt(values['5. volume'])
-                });
-            }
-
-            // Sort by date (oldest first)
-            candles.sort((a, b) => a.date - b.date);
-
-            // Filter to past 5 years
-            const fiveYearsAgo = new Date();
-            fiveYearsAgo.setFullYear(fiveYearsAgo.getFullYear() - 5);
-            const filteredCandles = candles.filter(c => c.date > fiveYearsAgo);
-
-            // Reason: Save to database for future use
-            this.saveDailyDataToDatabase(symbol, filteredCandles);
-
-            return filteredCandles;
+            throw new Error('No data returned from providers');
         } catch (error) {
-            console.error('Error fetching stock data:', error);
+            console.error('❌ Error fetching stock data from all providers:', error);
             throw error;
         }
     },
@@ -229,37 +209,14 @@ const API = {
      * @returns {Promise<Object>} Company overview data
      */
     async fetchCompanyOverview(symbol) {
-        const url = `${CONFIG.api.baseUrl}?function=OVERVIEW&symbol=${symbol}&apikey=${CONFIG.api.key}`;
+        // Initialize provider manager if not already done
+        this.initProviders();
 
         try {
-            console.log(`Fetching company overview for ${symbol}...`);
-            const response = await fetch(url);
-            const data = await response.json();
-
-            if (data['Note']) {
-                throw new Error('API rate limit reached');
-            }
-
-            if (!data.Symbol) {
-                throw new Error('No overview data available');
-            }
-
-            return {
-                symbol: data.Symbol,
-                marketCap: parseFloat(data.MarketCapitalization) || null,
-                peRatio: parseFloat(data.PERatio) || null,
-                dividendYield: parseFloat(data.DividendYield) || null,
-                dividendPerShare: parseFloat(data.DividendPerShare) || null,
-                week52High: parseFloat(data['52WeekHigh']) || null,
-                week52Low: parseFloat(data['52WeekLow']) || null,
-                beta: parseFloat(data.Beta) || null,
-                eps: parseFloat(data.EPS) || null,
-                bookValue: parseFloat(data.BookValue) || null,
-                profitMargin: parseFloat(data.ProfitMargin) || null,
-                operatingMarginTTM: parseFloat(data.OperatingMarginTTM) || null
-            };
+            console.log(`🔄 Fetching company overview for ${symbol} using multi-provider system...`);
+            return await this.providerManager.fetchCompanyOverview(symbol);
         } catch (error) {
-            console.error('Error fetching company overview:', error);
+            console.error('❌ Error fetching company overview from all providers:', error);
             throw error;
         }
     },
@@ -270,35 +227,14 @@ const API = {
      * @returns {Promise<Array>} Array of quarterly income statements
      */
     async fetchIncomeStatement(symbol) {
-        const url = `${CONFIG.api.baseUrl}?function=INCOME_STATEMENT&symbol=${symbol}&apikey=${CONFIG.api.key}`;
+        // Initialize provider manager if not already done
+        this.initProviders();
 
         try {
-            console.log(`Fetching income statements for ${symbol}...`);
-            const response = await fetch(url);
-            const data = await response.json();
-
-            if (data['Note']) {
-                throw new Error('API rate limit reached');
-            }
-
-            if (!data.quarterlyReports || data.quarterlyReports.length === 0) {
-                throw new Error('No income statement data available');
-            }
-
-            // Get last 8 quarters for YoY comparison
-            const reports = data.quarterlyReports.slice(0, 8).map(report => ({
-                fiscalDateEnding: report.fiscalDateEnding,
-                totalRevenue: parseFloat(report.totalRevenue) || 0,
-                operatingExpenses: parseFloat(report.operatingExpenses) || 0,
-                netIncome: parseFloat(report.netIncome) || 0,
-                ebitda: parseFloat(report.ebitda) || 0,
-                eps: parseFloat(report.reportedEPS) || 0,
-                grossProfit: parseFloat(report.grossProfit) || 0
-            }));
-
-            return reports;
+            console.log(`🔄 Fetching income statements for ${symbol} using multi-provider system...`);
+            return await this.providerManager.fetchIncomeStatements(symbol);
         } catch (error) {
-            console.error('Error fetching income statement:', error);
+            console.error('❌ Error fetching income statements from all providers:', error);
             throw error;
         }
     },

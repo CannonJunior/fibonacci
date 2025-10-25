@@ -1,8 +1,9 @@
 // Configuration for the Stock Analyzer application
 const CONFIG = {
     api: {
-        provider: 'alpha_vantage',
-        key: null, // Will be loaded from environment
+        provider: 'multi', // Use multi-provider system
+        key: null, // Alpha Vantage key - Will be loaded from environment
+        finnhubKey: null, // Finnhub key - Will be loaded from environment
         baseUrl: 'https://www.alphavantage.co/query'
     },
     stock: {
@@ -28,17 +29,21 @@ const CONFIG = {
     },
 
     /**
-     * Load API key from server
+     * Load API keys from server
      */
     async loadApiKey() {
         try {
             const response = await fetch('/api/config');
             const data = await response.json();
-            this.api.key = data.apiKey;
-            console.log('API key loaded from environment');
+            this.api.key = data.alphaVantageKey || data.apiKey;
+            this.api.finnhubKey = data.finnhubKey;
+            console.log('API keys loaded from environment');
+            console.log('- Alpha Vantage:', this.api.key ? '✓' : '✗');
+            console.log('- Finnhub:', this.api.finnhubKey ? '✓' : '✗');
         } catch (error) {
-            console.error('Failed to load API key:', error);
+            console.error('Failed to load API keys:', error);
             this.api.key = 'demo';
+            this.api.finnhubKey = 'demo';
         }
     }
 };

@@ -687,16 +687,17 @@ const Sidebar = {
 
     /**
      * Fetch financial data for a stock (legacy method - now calls fetchCompleteStockData)
+     * Reason: Throws errors to be caught by batch fetch handler instead of showing alerts
      * @deprecated Use fetchCompleteStockData instead
      */
     async fetchFinancialData(symbol) {
         try {
             await this.fetchCompleteStockData(symbol, false);
+            console.log(`✓ Successfully fetched financial data for ${symbol}`);
             return true;
         } catch (error) {
-            console.error(`Failed to fetch financial data for ${symbol}:`, error);
-            alert(`Failed to fetch financial data: ${error.message}`);
-            return null;
+            console.error(`❌ Failed to fetch financial data for ${symbol}:`, error.message);
+            throw error; // Reason: Re-throw to let batch handler count errors and show final summary
         }
     },
 
@@ -1033,6 +1034,16 @@ const Sidebar = {
     populateFetchDataPanel() {
         const content = document.getElementById('fetchDataContent');
 
+        // Reason: Save expansion state before rebuilding
+        const expandedSectors = new Set();
+        const expandedSubsectors = new Set();
+        document.querySelectorAll('.fetch-subsector-list.expanded').forEach(el => {
+            expandedSectors.add(el.dataset.sector);
+        });
+        document.querySelectorAll('.fetch-stock-list.expanded').forEach(el => {
+            expandedSubsectors.add(`${el.closest('.fetch-subsector-item').dataset.subsector}`);
+        });
+
         // Reason: Organize stocks by sector and subsector
         const hierarchy = {};
 
@@ -1104,6 +1115,30 @@ const Sidebar = {
         });
 
         content.innerHTML = html;
+
+        // Reason: Restore expansion state after rebuilding
+        expandedSectors.forEach(sector => {
+            const list = document.querySelector(`.fetch-subsector-list[data-sector="${sector}"]`);
+            if (list) {
+                list.classList.add('expanded');
+                const icon = document.querySelector(`[data-action="toggle-sector"][data-sector="${sector}"]`);
+                if (icon) {
+                    icon.classList.remove('fa-expand-alt');
+                    icon.classList.add('fa-down-left-and-up-right-to-center');
+                }
+            }
+        });
+        expandedSubsectors.forEach(subsector => {
+            const list = document.querySelector(`.fetch-stock-list[data-subsector="${subsector}"]`);
+            if (list) {
+                list.classList.add('expanded');
+                const icon = document.querySelector(`[data-action="toggle-subsector"][data-subsector="${subsector}"]`);
+                if (icon) {
+                    icon.classList.remove('fa-expand-alt');
+                    icon.classList.add('fa-down-left-and-up-right-to-center');
+                }
+            }
+        });
 
         // Add event listeners
         this.setupFetchDataEventListeners();
@@ -1195,7 +1230,7 @@ const Sidebar = {
         });
 
         if (selectedStocks.length === 0) {
-            alert('Please select at least one stock to fetch data for.');
+            Toast.warning('Please select at least one stock to fetch data for.');
             return;
         }
 
@@ -1219,13 +1254,21 @@ const Sidebar = {
         button.disabled = false;
         button.innerHTML = '<i class="fas fa-cloud-download-alt"></i> Fetch Data';
 
-        // Reason: Refresh the fetch data panel to show updated green backgrounds
+        // Reason: Refresh the fetch data panel to show updated green backgrounds (without closing it)
         this.populateFetchDataPanel();
 
         // Reason: Update sector and subsector summary cards after fetch
         this.renderSummaryCards();
 
-        alert(`Fetch complete!\nSuccess: ${successCount}\nErrors: ${errorCount}`);
+        // Reason: Show toast notification instead of blocking modal
+        const message = `Fetch complete! Success: ${successCount}, Errors: ${errorCount}`;
+        if (errorCount === 0) {
+            Toast.success(message, 4000);
+        } else if (successCount === 0) {
+            Toast.error(message, 4000);
+        } else {
+            Toast.info(message, 4000);
+        }
     },
 
     /**

@@ -421,6 +421,11 @@ const Chart = {
         if (this.showFibonacci && this.fibonacci) {
             this.updateFibonacci();
         }
+
+        // Reason: Update subsector lines after zoom
+        if (this.activeSubsectors.size > 0) {
+            this.updateSubsectors();
+        }
     },
 
     /**
@@ -731,5 +736,20 @@ const Chart = {
                     .text(lastPoint.subsector);
             }
         });
+    },
+
+    /**
+     * Update subsector lines after zoom
+     * Reason: Redraw subsector lines with updated xScale when user zooms
+     */
+    updateSubsectors() {
+        if (this.activeSubsectors.size === 0) return;
+
+        // Reason: Remove old subsector lines and labels
+        this.svg.selectAll('.subsector-line').remove();
+        this.svg.selectAll('.subsector-label').remove();
+
+        // Reason: Redraw with updated scales
+        this.drawSubsectors();
     }
 };

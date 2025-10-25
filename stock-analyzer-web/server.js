@@ -35,7 +35,9 @@ const server = http.createServer((req, res) => {
             'Access-Control-Allow-Origin': '*'
         });
         res.end(JSON.stringify({
-            apiKey: process.env.ALPHA_VANTAGE_API_KEY || 'demo'
+            apiKey: process.env.ALPHA_VANTAGE_API_KEY || 'demo',
+            alphaVantageKey: process.env.ALPHA_VANTAGE_API_KEY || 'demo',
+            finnhubKey: process.env.FINNHUB_API_KEY || 'demo'
         }));
         return;
     }
