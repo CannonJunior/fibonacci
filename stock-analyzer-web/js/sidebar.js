@@ -101,6 +101,15 @@ const Sidebar = {
             filterPanel.classList.toggle('open');
         });
 
+        // Hedge funds button toggle
+        const hedgeFundsButton = document.getElementById('hedgeFundsButton');
+        const hedgeFundsPanel = document.getElementById('hedgeFundsPanel');
+
+        hedgeFundsButton.addEventListener('click', (e) => {
+            e.stopPropagation();
+            hedgeFundsPanel.classList.toggle('open');
+        });
+
         // Filter option expand/collapse
         document.querySelectorAll('.filter-option-header').forEach(header => {
             header.addEventListener('click', (e) => {
@@ -1275,6 +1284,8 @@ const Sidebar = {
             return;
         }
 
+        console.log(`📊 Fetching data for ${selectedStocks.length} selected stock(s):`, selectedStocks);
+
         const button = document.getElementById('fetchSelectedDataButton');
         button.disabled = true;
         button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Fetching...';
@@ -1283,6 +1294,7 @@ const Sidebar = {
         let errorCount = 0;
 
         for (const symbol of selectedStocks) {
+            console.log(`🔄 Fetching: ${symbol}`);
             try {
                 await this.fetchFinancialData(symbol);
                 successCount++;
@@ -1549,19 +1561,24 @@ const Sidebar = {
     async renderSummaryCards() {
         const { completeSectors, completeSubsectors } = this.calculateCompleteSectorsAndSubsectors();
 
+        console.log(`📈 Rendering summary cards: ${completeSectors.length} complete sectors, ${completeSubsectors.length} complete subsectors`);
+
         // Reason: Calculate and save performance data for all complete sectors and subsectors
         for (const sector of completeSectors) {
+            console.log(`🔢 Calculating performance for sector: ${sector.name}`);
             await this.calculateAndSaveSectorPerformance(sector.name);
         }
 
         for (const subsector of completeSubsectors) {
+            console.log(`🔢 Calculating performance for subsector: ${subsector.sector}|${subsector.subsector}`);
             await this.calculateAndSaveSubsectorPerformance(subsector.sector, subsector.subsector);
         }
 
         // Render sector cards
+        const sectorSection = document.getElementById('sectorCardsSection');
         const sectorContainer = document.getElementById('sectorCardsContainer');
         if (completeSectors.length > 0) {
-            sectorContainer.style.display = 'flex';
+            sectorSection.style.display = 'block';
             sectorContainer.innerHTML = completeSectors.map(sector => {
                 const borderColor = this.getSectorColor(sector.name);
                 return `
@@ -1583,13 +1600,14 @@ const Sidebar = {
                 });
             });
         } else {
-            sectorContainer.style.display = 'none';
+            sectorSection.style.display = 'none';
         }
 
         // Render subsector cards
+        const subsectorSection = document.getElementById('subsectorCardsSection');
         const subsectorContainer = document.getElementById('subsectorCardsContainer');
         if (completeSubsectors.length > 0) {
-            subsectorContainer.style.display = 'flex';
+            subsectorSection.style.display = 'block';
             subsectorContainer.innerHTML = completeSubsectors.map(subsector => {
                 const borderColor = this.getSectorColor(subsector.sector);
                 const subsectorKey = `${subsector.sector}|${subsector.subsector}`;
@@ -1615,7 +1633,7 @@ const Sidebar = {
                 });
             });
         } else {
-            subsectorContainer.style.display = 'none';
+            subsectorSection.style.display = 'none';
         }
     }
 };

@@ -28,6 +28,9 @@
                     <button id="fetchDataButton" class="icon-button" title="Fetch Financial Data">
                         <i class="fas fa-cloud-download-alt"></i>
                     </button>
+                    <button id="hedgeFundsButton" class="icon-button" title="Hedge Fund Holdings">
+                        <i class="fas fa-chart-line"></i>
+                    </button>
                     <div id="sortDropdown" class="sort-dropdown">
                         <div class="sort-option" data-sort="percent-change">
                             % Change (Period)
@@ -118,6 +121,15 @@
             </div>
         </div>
 
+        <!-- Hedge Funds Panel -->
+        <div id="hedgeFundsPanel" class="hedge-funds-panel">
+            <div class="hedge-funds-panel-header">
+                <h3>Hedge Fund Holdings</h3>
+            </div>
+            <div class="hedge-funds-panel-content" id="hedgeFundsContent">
+            </div>
+        </div>
+
         <!-- Main Content -->
         <div class="container">
         <!-- Header -->
@@ -169,11 +181,33 @@
         </div>
 
         <!-- Sector Summary Cards -->
-        <div class="sector-cards-container" id="sectorCardsContainer" style="display: none;">
+        <div class="cards-section" id="sectorCardsSection" style="display: none;">
+            <div class="cards-section-header" id="sectorCardsHeader">
+                <h3>Sector Performance</h3>
+                <i class="fas fa-chevron-down collapse-icon"></i>
+            </div>
+            <div class="sector-cards-container" id="sectorCardsContainer">
+            </div>
         </div>
 
         <!-- Subsector Summary Cards -->
-        <div class="subsector-cards-container" id="subsectorCardsContainer" style="display: none;">
+        <div class="cards-section" id="subsectorCardsSection" style="display: none;">
+            <div class="cards-section-header" id="subsectorCardsHeader">
+                <h3>Subsector Performance</h3>
+                <i class="fas fa-chevron-down collapse-icon"></i>
+            </div>
+            <div class="subsector-cards-container" id="subsectorCardsContainer">
+            </div>
+        </div>
+
+        <!-- Individual Stocks Cards -->
+        <div class="cards-section" id="individualStocksSection" style="display: none;">
+            <div class="cards-section-header" id="individualStocksHeader">
+                <h3>Individual Stocks</h3>
+                <i class="fas fa-chevron-down collapse-icon"></i>
+            </div>
+            <div class="individual-stocks-container" id="individualStocksContainer">
+            </div>
         </div>
 
         <!-- Stock Price Info -->
@@ -191,6 +225,7 @@
         <!-- Main Chart Area -->
         <div class="chart-container">
             <svg id="chart"></svg>
+            <svg id="brush-chart"></svg>
             <div id="tooltip" class="tooltip" style="display: none;"></div>
             <div id="crosshair" class="crosshair" style="display: none;"></div>
             <div id="contextMenu" class="context-menu">
@@ -229,6 +264,8 @@
     <script src="js/chart.js"></script>
     <script src="js/stock-selector.js"></script>
     <script src="js/sidebar.js"></script>
+    <script src="js/hedge-funds.js"></script>
+    <script src="js/cards-sections.js"></script>
     <script src="js/clock.js"></script>
     <script src="js/app.js"></script>
 </body>

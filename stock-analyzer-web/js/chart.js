@@ -20,6 +20,7 @@ const Chart = {
     dailyFibonacci: null,
     activeSubsectors: new Map(),  // Map of subsectorKey -> {data, color, visible}
     activeSectors: new Map(),  // Map of sector -> {data, color, visible}
+    activeIndividualStocks: new Map(),  // Map of symbol -> {data, color, visible}
 
     /**
      * Initialize and render the chart
@@ -45,10 +46,18 @@ const Chart = {
         this.height = 1000 - CONFIG.chart.margin.top - CONFIG.chart.margin.bottom;
 
         // Create SVG
-        this.svg = d3.select('#chart')
+        const mainSvg = d3.select('#chart')
             .attr('width', this.width + CONFIG.chart.margin.left + CONFIG.chart.margin.right)
-            .attr('height', this.height + CONFIG.chart.margin.top + CONFIG.chart.margin.bottom)
-            .append('g')
+            .attr('height', this.height + CONFIG.chart.margin.top + CONFIG.chart.margin.bottom);
+
+        // Reason: Add clip path to prevent lines from extending past axes
+        mainSvg.append('defs').append('clipPath')
+            .attr('id', 'chart-clip')
+            .append('rect')
+            .attr('width', this.width)
+            .attr('height', this.height);
+
+        this.svg = mainSvg.append('g')
             .attr('transform', `translate(${CONFIG.chart.margin.left},${CONFIG.chart.margin.top})`);
 
         // Setup scales
@@ -68,8 +77,14 @@ const Chart = {
         // Reason: Draw sector lines if any are active
         this.drawSectors();
 
+        // Reason: Draw individual stock lines if any are active
+        this.drawIndividualStocks();
+
         // Setup zoom behavior
         this.setupZoom();
+
+        // Setup brush for x-axis navigation
+        this.setupBrush();
     },
 
     /**
@@ -200,7 +215,8 @@ const Chart = {
                 const hasIntraday = API.hasIntradayData(CONFIG.stock.symbol, d.date);
                 return hasIntraday ? `${baseClass} candle-has-intraday` : baseClass;
             })
-            .attr('transform', d => `translate(${this.xScale(d.date)},0)`);
+            .attr('transform', d => `translate(${this.xScale(d.date)},0)`)
+            .attr('clip-path', 'url(#chart-clip)');  // Reason: Clip candles to chart area
 
         // Draw wicks
         candleGroup.append('line')
@@ -442,6 +458,11 @@ const Chart = {
         // Reason: Update sector lines after zoom
         if (this.activeSectors.size > 0) {
             this.updateSectors();
+        }
+
+        // Reason: Update individual stock lines after zoom
+        if (this.activeIndividualStocks.size > 0) {
+            this.updateIndividualStocks();
         }
     },
 
@@ -796,6 +817,7 @@ const Chart = {
                 .attr('fill', 'none')
                 .attr('stroke', subsector.color)
                 .attr('stroke-width', 2)
+                .attr('clip-path', 'url(#chart-clip)')  // Reason: Clip lines to chart area
                 .attr('d', line);
 
             // Add label at the end of the line
@@ -849,6 +871,7 @@ const Chart = {
                 .attr('stroke', sector.color)
                 .attr('stroke-width', 3)  // Thicker than subsector lines
                 .attr('stroke-dasharray', '5,5')  // Dashed line to distinguish from subsectors
+                .attr('clip-path', 'url(#chart-clip)')  // Reason: Clip lines to chart area
                 .attr('d', line);
 
             // Add label at the end of the line
@@ -879,5 +902,320 @@ const Chart = {
 
         // Reason: Redraw with updated scales
         this.drawSectors();
+    },
+
+    /**
+     * Draw individual stock lines on the chart
+     * Reason: Display individual stocks as line series similar to subsectors
+     */
+    drawIndividualStocks() {
+        if (this.activeIndividualStocks.size === 0) return;
+
+        // Reason: Create line generator using price scale (yScale), not percent scale
+        const line = d3.line()
+            .x(d => this.xScale(d.date))
+            .y(d => this.yScale(d.close))
+            .curve(d3.curveMonotoneX);
+
+        this.activeIndividualStocks.forEach((stock, symbol) => {
+            if (!stock.visible) return;
+
+            // Reason: Filter stock data to only include dates within current chart range
+            const visibleData = stock.data.filter(d => {
+                const date = d.date;
+                return date >= this.xScale.domain()[0] && date <= this.xScale.domain()[1];
+            });
+
+            if (visibleData.length === 0) return;
+
+            // Reason: Draw line path
+            this.svg.append('path')
+                .datum(visibleData)
+                .attr('class', 'individual-stock-line')
+                .attr('data-symbol', symbol)
+                .attr('fill', 'none')
+                .attr('stroke', stock.color)
+                .attr('stroke-width', 2)
+                .attr('opacity', 0.8)
+                .attr('d', line);
+
+            // Reason: Add label at end of line
+            const lastPoint = visibleData[visibleData.length - 1];
+            if (lastPoint) {
+                this.svg.append('text')
+                    .attr('class', 'individual-stock-label')
+                    .attr('data-symbol', symbol)
+                    .attr('x', this.xScale(lastPoint.date) + 5)
+                    .attr('y', this.yScale(lastPoint.close))
+                    .attr('fill', stock.color)
+                    .attr('font-size', '12px')
+                    .attr('font-weight', '700')
+                    .text(symbol);
+            }
+        });
+    },
+
+    /**
+     * Update individual stock lines after zoom
+     * Reason: Redraw individual stock lines with updated xScale when user zooms
+     */
+    updateIndividualStocks() {
+        if (this.activeIndividualStocks.size === 0) return;
+
+        // Reason: Remove old individual stock lines and labels
+        this.svg.selectAll('.individual-stock-line').remove();
+        this.svg.selectAll('.individual-stock-label').remove();
+
+        // Reason: Redraw with updated scales
+        this.drawIndividualStocks();
+    },
+
+    /**
+     * Setup brush/slider for x-axis navigation
+     * Reason: Allow user to select a window of data to view with mouse drag
+     */
+    setupBrush() {
+        const brushHeight = 80;
+        const brushMargin = { top: 20, right: CONFIG.chart.margin.right, bottom: 30, left: CONFIG.chart.margin.left };
+
+        // Clear previous brush chart
+        d3.select('#brush-chart').selectAll('*').remove();
+
+        // Create brush SVG
+        const brushSvg = d3.select('#brush-chart')
+            .attr('width', this.width + CONFIG.chart.margin.left + CONFIG.chart.margin.right)
+            .attr('height', brushHeight + brushMargin.top + brushMargin.bottom);
+
+        // Create brush scale (same domain as main chart, different range)
+        const brushXScale = d3.scaleTime()
+            .domain(d3.extent(this.data, d => d.date))
+            .range([0, this.width]);
+
+        const brushYScale = d3.scaleLinear()
+            .domain([d3.min(this.data, d => d.low), d3.max(this.data, d => d.high)])
+            .range([brushHeight, 0]);
+
+        // Draw simplified area chart in brush
+        const area = d3.area()
+            .x(d => brushXScale(d.date))
+            .y0(brushHeight)
+            .y1(d => brushYScale(d.close))
+            .curve(d3.curveMonotoneX);
+
+        const brushGroup = brushSvg.append('g')
+            .attr('transform', `translate(${brushMargin.left},${brushMargin.top})`);
+
+        brushGroup.append('path')
+            .datum(this.data)
+            .attr('fill', 'rgba(29, 155, 240, 0.3)')
+            .attr('stroke', 'rgba(29, 155, 240, 0.6)')
+            .attr('stroke-width', 1)
+            .attr('d', area);
+
+        // Add brush behavior
+        const self = this;
+        const brush = d3.brushX()
+            .extent([[0, 0], [this.width, brushHeight]])
+            .on('brush end', function(event) {
+                if (!event.selection) return;
+
+                const [x0, x1] = event.selection.map(brushXScale.invert);
+
+                // Update main chart's xScale domain
+                self.xScale.domain([x0, x1]);
+
+                // Update axes
+                self.updateAxes();
+
+                // Filter visible data
+                const visibleData = self.data.filter(d => d.date >= x0 && d.date <= x1);
+
+                // Update candles
+                self.updateCandles(visibleData);
+
+                // Update Fibonacci if shown
+                if (self.showFibonacci && self.fibonacci) {
+                    self.updateFibonacci();
+                }
+
+                // Update subsector lines if any
+                if (self.activeSubsectors.size > 0) {
+                    self.updateSubsectors();
+                }
+
+                // Update sector lines if any
+                if (self.activeSectors.size > 0) {
+                    self.updateSectors();
+                }
+            });
+
+        brushGroup.append('g')
+            .attr('class', 'brush')
+            .call(brush)
+            .call(brush.move, brushXScale.range()); // Initialize with full range
+
+        // Add x-axis to brush chart
+        brushGroup.append('g')
+            .attr('class', 'axis axis-bottom')
+            .attr('transform', `translate(0,${brushHeight})`)
+            .call(d3.axisBottom(brushXScale)
+                .ticks(6)
+                .tickFormat(d => API.formatShortDate(d))
+            );
+    },
+
+    /**
+     * Show an individual stock on the chart
+     * @param {string} symbol - Stock symbol to display
+     */
+    async showIndividualStock(symbol) {
+        console.log('Chart.showIndividualStock called with:', symbol);
+
+        // Reason: Check if stock is already displayed
+        if (this.activeIndividualStocks.has(symbol)) {
+            const stock = this.activeIndividualStocks.get(symbol);
+            stock.visible = true;
+            this.updateIndividualStocks();
+            this.updateIndividualStocksSection();
+            return;
+        }
+
+        // Reason: Fetch stock data from the database
+        try {
+            const response = await fetch(`/api/get-daily?symbol=${symbol}`);
+            const result = await response.json();
+
+            if (result.data && result.data.length > 0) {
+                // Reason: Process stock data to match chart date range
+                const stockData = result.data.map(d => ({
+                    date: new Date(d.date),
+                    close: d.close
+                }));
+
+                // Reason: Generate a unique color for this stock
+                const color = this.generateStockColor(symbol);
+
+                // Reason: Add to active individual stocks
+                this.activeIndividualStocks.set(symbol, {
+                    data: stockData,
+                    color,
+                    visible: true
+                });
+
+                console.log(`Added ${symbol} to active individual stocks`);
+
+                // Reason: Draw the chart to show the new stock line
+                this.drawIndividualStocks();
+
+                // Reason: Update Individual Stocks section in UI
+                this.updateIndividualStocksSection();
+            } else {
+                console.error('No data returned for symbol:', symbol);
+                Toast.error(`Failed to load ${symbol} data`);
+            }
+        } catch (error) {
+            console.error(`Error fetching data for ${symbol}:`, error);
+            Toast.error(`Failed to load ${symbol}`);
+        }
+    },
+
+    /**
+     * Hide an individual stock from the chart
+     * @param {string} symbol - Stock symbol to hide
+     */
+    hideIndividualStock(symbol) {
+        console.log('Chart.hideIndividualStock called with:', symbol);
+
+        if (this.activeIndividualStocks.has(symbol)) {
+            const stock = this.activeIndividualStocks.get(symbol);
+            stock.visible = false;
+            this.updateIndividualStocks();
+            this.updateIndividualStocksSection();
+        }
+    },
+
+    /**
+     * Generate a unique color for a stock
+     * @param {string} symbol - Stock symbol
+     * @returns {string} - Hex color code
+     */
+    generateStockColor(symbol) {
+        // Reason: Use a predefined color palette for individual stocks
+        const colors = [
+            '#1d9bf0', // Blue
+            '#00ba7c', // Green
+            '#f91880', // Pink
+            '#ff9500', // Orange
+            '#bf5af2', // Purple
+            '#00d4ff', // Cyan
+            '#ffd60a', // Yellow
+            '#ff453a', // Red
+            '#32d74b', // Light Green
+            '#64d2ff', // Light Blue
+        ];
+
+        // Reason: Use symbol hash to pick consistent color
+        let hash = 0;
+        for (let i = 0; i < symbol.length; i++) {
+            hash = symbol.charCodeAt(i) + ((hash << 5) - hash);
+        }
+        const index = Math.abs(hash) % colors.length;
+        return colors[index];
+    },
+
+    /**
+     * Update the Individual Stocks section in the UI
+     */
+    updateIndividualStocksSection() {
+        const section = document.getElementById('individualStocksSection');
+        const container = document.getElementById('individualStocksContainer');
+
+        if (!section || !container) return;
+
+        // Reason: Get list of visible individual stocks
+        const visibleStocks = [];
+        this.activeIndividualStocks.forEach((stock, symbol) => {
+            if (stock.visible) {
+                visibleStocks.push({ symbol, color: stock.color });
+            }
+        });
+
+        if (visibleStocks.length === 0) {
+            section.style.display = 'none';
+            return;
+        }
+
+        // Reason: Show section and render stock cards
+        section.style.display = 'block';
+
+        const html = visibleStocks.map(stock => `
+            <div class="individual-stock-card" data-symbol="${stock.symbol}" style="border-left-color: ${stock.color}">
+                <div class="stock-card-header">
+                    <div class="stock-card-symbol">${stock.symbol}</div>
+                    <button class="stock-card-remove-btn" data-symbol="${stock.symbol}" title="Remove from chart">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            </div>
+        `).join('');
+
+        container.innerHTML = html;
+
+        // Reason: Add click handlers to remove buttons
+        container.querySelectorAll('.stock-card-remove-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const symbol = btn.dataset.symbol;
+                this.hideIndividualStock(symbol);
+
+                // Reason: Also update the toggle button in hedge funds panel
+                const toggleBtn = document.querySelector(`.holding-toggle-btn[data-symbol="${symbol}"]`);
+                if (toggleBtn) {
+                    toggleBtn.dataset.active = 'false';
+                    toggleBtn.querySelector('i').className = 'fas fa-eye-slash';
+                    toggleBtn.title = 'Show on chart';
+                }
+            });
+        });
     }
 };
