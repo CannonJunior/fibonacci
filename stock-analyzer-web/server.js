@@ -248,6 +248,39 @@ const server = http.createServer((req, res) => {
         return;
     }
 
+    // API endpoint to save sector performance data
+    if (pathname === '/api/save-sector-performance' && req.method === 'POST') {
+        let body = '';
+        req.on('data', chunk => { body += chunk.toString(); });
+        req.on('end', () => {
+            try {
+                const { sector, performanceData } = JSON.parse(body);
+                db.saveSectorPerformance(sector, performanceData);
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: true }));
+            } catch (error) {
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: error.message }));
+            }
+        });
+        return;
+    }
+
+    // API endpoint to get sector performance data
+    if (pathname === '/api/get-sector-performance') {
+        const sector = parsedUrl.query.sector;
+        if (!sector) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'sector parameter required' }));
+            return;
+        }
+
+        const performanceData = db.getSectorPerformance(sector);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ performanceData }));
+        return;
+    }
+
     // Serve static files
     let filePath = '.' + req.url;
     if (filePath === './') {

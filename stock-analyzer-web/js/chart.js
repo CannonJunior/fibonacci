@@ -19,6 +19,7 @@ const Chart = {
     dailyData: null,
     dailyFibonacci: null,
     activeSubsectors: new Map(),  // Map of subsectorKey -> {data, color, visible}
+    activeSectors: new Map(),  // Map of sector -> {data, color, visible}
 
     /**
      * Initialize and render the chart
@@ -64,6 +65,9 @@ const Chart = {
         // Reason: Draw subsector lines if any are active
         this.drawSubsectors();
 
+        // Reason: Draw sector lines if any are active
+        this.drawSectors();
+
         // Setup zoom behavior
         this.setupZoom();
     },
@@ -89,14 +93,22 @@ const Chart = {
             .domain([yMin - yPadding, yMax + yPadding])
             .range([this.height, 0]);
 
-        // Reason: Right Y scale for subsector percentage data
-        // Find min/max across all active subsectors
+        // Reason: Right Y scale for subsector and sector percentage data
+        // Find min/max across all active subsectors and sectors
         let percentMin = 0;
         let percentMax = 0;
         this.activeSubsectors.forEach(subsector => {
             if (subsector.data && subsector.data.length > 0) {
                 const min = d3.min(subsector.data, d => d.percentChange);
                 const max = d3.max(subsector.data, d => d.percentChange);
+                percentMin = Math.min(percentMin, min);
+                percentMax = Math.max(percentMax, max);
+            }
+        });
+        this.activeSectors.forEach(sector => {
+            if (sector.data && sector.data.length > 0) {
+                const min = d3.min(sector.data, d => d.percentChange);
+                const max = d3.max(sector.data, d => d.percentChange);
                 percentMin = Math.min(percentMin, min);
                 percentMax = Math.max(percentMax, max);
             }
@@ -426,6 +438,11 @@ const Chart = {
         if (this.activeSubsectors.size > 0) {
             this.updateSubsectors();
         }
+
+        // Reason: Update sector lines after zoom
+        if (this.activeSectors.size > 0) {
+            this.updateSectors();
+        }
     },
 
     /**
@@ -702,6 +719,64 @@ const Chart = {
     },
 
     /**
+     * Toggle sector display on/off
+     * @param {string} sector - Sector name
+     */
+    async toggleSector(sector) {
+        console.log('Chart.toggleSector called with:', sector);
+        console.log('Current active sectors:', this.activeSectors);
+
+        if (this.activeSectors.has(sector)) {
+            // Remove sector
+            console.log('Removing sector:', sector);
+            this.activeSectors.delete(sector);
+        } else {
+            // Fetch sector data from database
+            console.log('Fetching sector data for:', sector);
+            try {
+                const url = `/api/get-sector-performance?sector=${encodeURIComponent(sector)}`;
+                console.log('Fetching from URL:', url);
+                const response = await fetch(url);
+                const result = await response.json();
+                console.log('API response:', result);
+
+                if (result.performanceData) {
+                    // Parse dates
+                    const data = result.performanceData.map(d => ({
+                        date: new Date(d.date),
+                        percentChange: d.percentChange,
+                        sector: d.sector
+                    }));
+
+                    console.log('Parsed data:', data);
+
+                    // Assign a color from Sidebar's sector color scheme
+                    const color = Sidebar.getSectorColor(sector);
+
+                    console.log('Sector:', sector, 'Color:', color);
+
+                    // Add to active sectors
+                    this.activeSectors.set(sector, {
+                        data,
+                        color,
+                        visible: true
+                    });
+                    console.log('Added to active sectors. Size now:', this.activeSectors.size);
+                } else {
+                    console.log('No performanceData in result');
+                }
+            } catch (error) {
+                console.error(`Failed to fetch sector data for ${sector}:`, error);
+                return;
+            }
+        }
+
+        // Re-render chart
+        console.log('Re-rendering chart with data:', this.data, 'and fibonacci:', this.fibonacci);
+        this.render(this.data, this.fibonacci);
+    },
+
+    /**
      * Draw subsector lines
      */
     drawSubsectors() {
@@ -751,5 +826,58 @@ const Chart = {
 
         // Reason: Redraw with updated scales
         this.drawSubsectors();
+    },
+
+    /**
+     * Draw sector lines
+     */
+    drawSectors() {
+        if (this.activeSectors.size === 0) return;
+
+        const line = d3.line()
+            .x(d => this.xScale(d.date))
+            .y(d => this.yScalePercent(d.percentChange))
+            .curve(d3.curveMonotoneX);
+
+        this.activeSectors.forEach((sector, sectorName) => {
+            if (!sector.visible) return;
+
+            this.svg.append('path')
+                .datum(sector.data)
+                .attr('class', 'sector-line')
+                .attr('fill', 'none')
+                .attr('stroke', sector.color)
+                .attr('stroke-width', 3)  // Thicker than subsector lines
+                .attr('stroke-dasharray', '5,5')  // Dashed line to distinguish from subsectors
+                .attr('d', line);
+
+            // Add label at the end of the line
+            const lastPoint = sector.data[sector.data.length - 1];
+            if (lastPoint) {
+                this.svg.append('text')
+                    .attr('class', 'sector-label')
+                    .attr('x', this.xScale(lastPoint.date) + 5)
+                    .attr('y', this.yScalePercent(lastPoint.percentChange))
+                    .attr('fill', sector.color)
+                    .attr('font-size', '12px')
+                    .attr('font-weight', '700')
+                    .text(sectorName);
+            }
+        });
+    },
+
+    /**
+     * Update sector lines after zoom
+     * Reason: Redraw sector lines with updated xScale when user zooms
+     */
+    updateSectors() {
+        if (this.activeSectors.size === 0) return;
+
+        // Reason: Remove old sector lines and labels
+        this.svg.selectAll('.sector-line').remove();
+        this.svg.selectAll('.sector-label').remove();
+
+        // Reason: Redraw with updated scales
+        this.drawSectors();
     }
 };

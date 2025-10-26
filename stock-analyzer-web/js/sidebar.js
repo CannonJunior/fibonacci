@@ -1063,8 +1063,47 @@ const Sidebar = {
 
         sectors.forEach(sector => {
             const sectorId = sector.replace(/\s+/g, '-').toLowerCase();
+            const subsectors = Object.keys(hierarchy[sector]).sort();
+
+            // Reason: Check if entire sector is complete (all subsectors complete)
+            let sectorComplete = true;
+            let totalSectorStocks = 0;
+            let loadedSectorStocks = 0;
+
+            const subsectorData = [];
+            subsectors.forEach(subsector => {
+                const stocks = hierarchy[sector][subsector];
+                let subsectorComplete = true;
+                let loadedCount = 0;
+
+                stocks.forEach(stock => {
+                    totalSectorStocks++;
+                    const loadedStock = this.loadedStocks.find(s => s.symbol === stock.symbol);
+                    const hasFinancialData = this.hasCompleteData(loadedStock);
+                    if (hasFinancialData) {
+                        loadedCount++;
+                        loadedSectorStocks++;
+                    } else {
+                        subsectorComplete = false;
+                    }
+                });
+
+                if (!subsectorComplete) {
+                    sectorComplete = false;
+                }
+
+                subsectorData.push({
+                    name: subsector,
+                    stocks: stocks,
+                    complete: subsectorComplete,
+                    loadedCount: loadedCount
+                });
+            });
+
+            const sectorClass = sectorComplete ? 'has-financial-data' : '';
+
             html += `
-                <div class="fetch-sector-item" data-sector="${sector}">
+                <div class="fetch-sector-item ${sectorClass}" data-sector="${sector}">
                     <div class="fetch-item-header">
                         <input type="checkbox" class="fetch-item-checkbox sector-checkbox" data-sector="${sector}">
                         <span class="fetch-item-label">${sector}</span>
@@ -1073,11 +1112,13 @@ const Sidebar = {
                     <div class="fetch-subsector-list" data-sector="${sector}">
             `;
 
-            const subsectors = Object.keys(hierarchy[sector]).sort();
-            subsectors.forEach(subsector => {
+            subsectorData.forEach(subsectorInfo => {
+                const subsector = subsectorInfo.name;
                 const subsectorId = subsector.replace(/\s+/g, '-').toLowerCase();
+                const subsectorClass = subsectorInfo.complete ? 'has-financial-data' : '';
+
                 html += `
-                    <div class="fetch-subsector-item" data-subsector="${subsector}">
+                    <div class="fetch-subsector-item ${subsectorClass}" data-subsector="${subsector}">
                         <div class="fetch-item-header">
                             <input type="checkbox" class="fetch-item-checkbox subsector-checkbox" data-sector="${sector}" data-subsector="${subsector}">
                             <span class="fetch-item-label">${subsector}</span>
@@ -1086,7 +1127,7 @@ const Sidebar = {
                         <div class="fetch-stock-list" data-subsector="${subsector}">
                 `;
 
-                hierarchy[sector][subsector].forEach(stock => {
+                subsectorInfo.stocks.forEach(stock => {
                     // Reason: Check if this stock has complete data loaded using consolidated check
                     const loadedStock = this.loadedStocks.find(s => s.symbol === stock.symbol);
                     const hasFinancialData = this.hasCompleteData(loadedStock);
@@ -1431,12 +1472,88 @@ const Sidebar = {
     },
 
     /**
+     * Calculate and save sector aggregated performance data
+     * @param {string} sector - Sector name
+     */
+    async calculateAndSaveSectorPerformance(sector) {
+        // Reason: Get all stocks in this sector with complete data
+        const sectorStocks = this.loadedStocks.filter(stock =>
+            stock.sector === sector &&
+            this.hasCompleteData(stock)
+        );
+
+        if (sectorStocks.length === 0) {
+            console.warn(`No stocks with complete data for ${sector}`);
+            return;
+        }
+
+        // Reason: Get the date range from the first stock (they should all have same range)
+        const firstStock = sectorStocks[0];
+        if (!firstStock.candles || firstStock.candles.length === 0) {
+            console.warn(`No candle data for ${sector}`);
+            return;
+        }
+
+        // Reason: Create a map of dates to aggregate percentage changes
+        const dateMap = new Map();
+
+        // Initialize dateMap with all dates from first stock
+        firstStock.candles.forEach(candle => {
+            dateMap.set(candle.date, { date: candle.date, stockChanges: [] });
+        });
+
+        // Reason: For each stock, calculate percentage change from start and add to dateMap
+        sectorStocks.forEach(stock => {
+            if (!stock.candles || stock.candles.length === 0) return;
+
+            const startPrice = stock.candles[0].close;
+
+            stock.candles.forEach(candle => {
+                const percentChange = ((candle.close - startPrice) / startPrice) * 100;
+                const dateData = dateMap.get(candle.date);
+                if (dateData) {
+                    dateData.stockChanges.push(percentChange);
+                }
+            });
+        });
+
+        // Reason: Calculate average percentage change for each date
+        const performanceData = Array.from(dateMap.values())
+            .map(dateData => ({
+                date: dateData.date,
+                percentChange: dateData.stockChanges.length > 0
+                    ? dateData.stockChanges.reduce((sum, val) => sum + val, 0) / dateData.stockChanges.length
+                    : 0
+            }))
+            .filter(data => data.percentChange !== 0); // Filter out dates with no data
+
+        // Reason: Save to database
+        try {
+            await fetch('/api/save-sector-performance', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    sector,
+                    performanceData
+                })
+            });
+            console.log(`Saved performance data for ${sector}`);
+        } catch (error) {
+            console.error(`Failed to save performance data for ${sector}:`, error);
+        }
+    },
+
+    /**
      * Render sector and subsector summary cards
      */
     async renderSummaryCards() {
         const { completeSectors, completeSubsectors } = this.calculateCompleteSectorsAndSubsectors();
 
-        // Reason: Calculate and save subsector performance data for all complete subsectors
+        // Reason: Calculate and save performance data for all complete sectors and subsectors
+        for (const sector of completeSectors) {
+            await this.calculateAndSaveSectorPerformance(sector.name);
+        }
+
         for (const subsector of completeSubsectors) {
             await this.calculateAndSaveSubsectorPerformance(subsector.sector, subsector.subsector);
         }
@@ -1445,12 +1562,26 @@ const Sidebar = {
         const sectorContainer = document.getElementById('sectorCardsContainer');
         if (completeSectors.length > 0) {
             sectorContainer.style.display = 'flex';
-            sectorContainer.innerHTML = completeSectors.map(sector => `
-                <div class="sector-card" data-sector="${sector.name}">
-                    <div class="sector-card-name">${sector.name}</div>
-                    <div class="sector-card-count">${sector.count} stocks</div>
-                </div>
-            `).join('');
+            sectorContainer.innerHTML = completeSectors.map(sector => {
+                const borderColor = this.getSectorColor(sector.name);
+                return `
+                    <div class="sector-card" data-sector="${sector.name}" style="border-left-color: ${borderColor};">
+                        <div class="sector-card-name">${sector.name}</div>
+                        <div class="sector-card-count">${sector.count} stocks</div>
+                    </div>
+                `;
+            }).join('');
+
+            // Reason: Add click handlers to sector cards
+            document.querySelectorAll('.sector-card').forEach(card => {
+                card.addEventListener('click', async () => {
+                    const sector = card.dataset.sector;
+                    console.log('Sector card clicked:', sector);
+                    await Chart.toggleSector(sector);
+                    // Toggle active class
+                    card.classList.toggle('active');
+                });
+            });
         } else {
             sectorContainer.style.display = 'none';
         }

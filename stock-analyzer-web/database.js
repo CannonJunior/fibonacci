@@ -99,12 +99,25 @@ function initializeDatabase() {
         )
     `);
 
+    // Reason: Table for sector aggregated performance data (percentage-based)
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS sector_performance (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sector TEXT NOT NULL,
+            date TEXT NOT NULL,
+            percent_change REAL NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(sector, date)
+        )
+    `);
+
     // Create indices for faster lookups
     db.exec(`
         CREATE INDEX IF NOT EXISTS idx_daily_symbol_date ON daily_prices(symbol, date);
         CREATE INDEX IF NOT EXISTS idx_intraday_symbol_timestamp ON intraday_prices(symbol, timestamp);
         CREATE INDEX IF NOT EXISTS idx_income_symbol_date ON income_statements(symbol, fiscal_date_ending);
         CREATE INDEX IF NOT EXISTS idx_subsector_key_date ON subsector_performance(subsector_key, date);
+        CREATE INDEX IF NOT EXISTS idx_sector_date ON sector_performance(sector, date);
     `);
 
     console.log('Database initialized at:', DB_PATH);
@@ -393,6 +406,62 @@ function hasSubsectorPerformance(subsectorKey) {
     return result.count > 0;
 }
 
+/**
+ * Save sector performance data
+ * @param {string} sector - Sector name
+ * @param {Array} performanceData - Array of {date, percentChange}
+ */
+function saveSectorPerformance(sector, performanceData) {
+    const stmt = db.prepare(`
+        INSERT OR REPLACE INTO sector_performance (
+            sector, date, percent_change
+        ) VALUES (?, ?, ?)
+    `);
+
+    const insertMany = db.transaction((data) => {
+        for (const point of data) {
+            stmt.run(
+                sector,
+                point.date,
+                point.percentChange
+            );
+        }
+    });
+
+    insertMany(performanceData);
+    console.log(`Saved ${performanceData.length} performance data points for sector ${sector}`);
+}
+
+/**
+ * Get sector performance data
+ * @param {string} sector - Sector name
+ * @returns {Array|null} Array of performance data or null
+ */
+function getSectorPerformance(sector) {
+    const stmt = db.prepare(`
+        SELECT sector, date, percent_change as percentChange
+        FROM sector_performance
+        WHERE sector = ?
+        ORDER BY date ASC
+    `);
+
+    const rows = stmt.all(sector);
+    return rows.length > 0 ? rows : null;
+}
+
+/**
+ * Check if sector performance data exists
+ * @param {string} sector - Sector name
+ * @returns {boolean} True if data exists
+ */
+function hasSectorPerformance(sector) {
+    const stmt = db.prepare(`
+        SELECT COUNT(*) as count FROM sector_performance WHERE sector = ?
+    `);
+    const result = stmt.get(sector);
+    return result.count > 0;
+}
+
 // Initialize database on module load
 initializeDatabase();
 
@@ -410,5 +479,8 @@ module.exports = {
     getIncomeStatements,
     saveSubsectorPerformance,
     getSubsectorPerformance,
-    hasSubsectorPerformance
+    hasSubsectorPerformance,
+    saveSectorPerformance,
+    getSectorPerformance,
+    hasSectorPerformance
 };
