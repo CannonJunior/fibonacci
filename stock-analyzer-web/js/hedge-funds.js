@@ -62,8 +62,26 @@ const HedgeFunds = {
             return;
         }
 
+        // Reason: Save expanded state before re-rendering to prevent card compression
+        const expandedFunds = new Set();
+        container.querySelectorAll('.hedgefund-holdings').forEach(holdingsDiv => {
+            if (holdingsDiv.style.display !== 'none') {
+                expandedFunds.add(holdingsDiv.dataset.fundId);
+            }
+        });
+
         const html = this.hedgeFundsData.map(fund => this.createHedgeFundCard(fund)).join('');
         container.innerHTML = html;
+
+        // Reason: Restore expanded state after re-rendering
+        expandedFunds.forEach(fundId => {
+            const holdingsDiv = container.querySelector(`.hedgefund-holdings[data-fund-id="${fundId}"]`);
+            const button = container.querySelector(`.hedgefund-expand-btn[data-fund-id="${fundId}"] i`);
+            if (holdingsDiv && button) {
+                holdingsDiv.style.display = 'block';
+                button.className = 'fas fa-chevron-up';
+            }
+        });
     },
 
     /**
@@ -71,6 +89,20 @@ const HedgeFunds = {
      */
     createHedgeFundCard(fund) {
         const aum = this.formatCurrency(fund.aum);
+
+        // Reason: Check if all loaded holdings are currently visible on chart
+        const loadedHoldings = fund.holdings.filter(h => this.loadedStocks.has(h.symbol));
+        const allVisible = loadedHoldings.length > 0 && loadedHoldings.every(h => {
+            if (typeof Chart !== 'undefined' && Chart.activeIndividualStocks) {
+                const stock = Chart.activeIndividualStocks.get(h.symbol);
+                return stock && stock.visible;
+            }
+            return false;
+        });
+
+        // Reason: Check if this fund has a combined portfolio line active
+        const isCombined = typeof Chart !== 'undefined' && Chart.activeHedgeFundPortfolios &&
+                          Chart.activeHedgeFundPortfolios.has(fund.id);
 
         return `
             <div class="hedgefund-card" data-fund-id="${fund.id}">
@@ -80,9 +112,17 @@ const HedgeFunds = {
                         <div class="hedgefund-manager">${fund.manager}</div>
                         <div class="hedgefund-aum">AUM: ${aum}</div>
                     </div>
-                    <button class="hedgefund-expand-btn" data-fund-id="${fund.id}">
-                        <i class="fas fa-chevron-down"></i>
-                    </button>
+                    <div class="hedgefund-header-buttons">
+                        <button class="hedgefund-combine-btn" data-fund-id="${fund.id}" data-active="${isCombined}" title="${isCombined ? 'Show individual holdings' : 'Combine holdings into portfolio'}">
+                            <i class="fas ${isCombined ? 'fa-chart-pie' : 'fa-layer-group'}"></i>
+                        </button>
+                        <button class="hedgefund-master-toggle-btn" data-fund-id="${fund.id}" data-active="${allVisible}" title="${allVisible ? 'Hide all holdings from chart' : 'Show all holdings on chart'}">
+                            <i class="fas ${allVisible ? 'fa-eye' : 'fa-eye-slash'}"></i>
+                        </button>
+                        <button class="hedgefund-expand-btn" data-fund-id="${fund.id}">
+                            <i class="fas fa-chevron-down"></i>
+                        </button>
+                    </div>
                 </div>
                 <div class="hedgefund-description">${fund.description}</div>
                 <div class="hedgefund-holdings" data-fund-id="${fund.id}" style="display: none;">
@@ -160,6 +200,26 @@ const HedgeFunds = {
 
         // Reason: Expand/collapse hedge fund cards
         container.addEventListener('click', (e) => {
+            // Reason: Handle combine button to create portfolio line
+            const combineBtn = e.target.closest('.hedgefund-combine-btn');
+            if (combineBtn) {
+                e.stopPropagation();
+                e.preventDefault();
+                const fundId = combineBtn.dataset.fundId;
+                this.toggleCombinedPortfolio(fundId);
+                return;
+            }
+
+            // Reason: Handle master toggle button for entire hedge fund
+            const masterToggleBtn = e.target.closest('.hedgefund-master-toggle-btn');
+            if (masterToggleBtn) {
+                e.stopPropagation();
+                e.preventDefault();
+                const fundId = masterToggleBtn.dataset.fundId;
+                this.toggleAllHoldingsOnChart(fundId);
+                return;
+            }
+
             const expandBtn = e.target.closest('.hedgefund-expand-btn');
             if (expandBtn) {
                 const fundId = expandBtn.dataset.fundId;
@@ -247,7 +307,10 @@ const HedgeFunds = {
     async loadStock(symbol) {
         try {
             Toast.info(`Loading ${symbol}...`);
-            await API.loadStock(symbol);
+
+            // Reason: Use the same method as stock selector to ensure consistency
+            await Sidebar.fetchCompleteStockData(symbol, false);
+
             Toast.success(`Loaded ${symbol}`);
 
             // Reason: Re-render hedge fund cards to update the UI
@@ -256,6 +319,168 @@ const HedgeFunds = {
         } catch (error) {
             console.error(`Error loading ${symbol}:`, error);
             Toast.error(`Failed to load ${symbol}`);
+        }
+    },
+
+    /**
+     * Toggle all loaded holdings from a hedge fund on/off the chart
+     */
+    toggleAllHoldingsOnChart(fundId) {
+        const fund = this.hedgeFundsData.find(f => f.id === fundId);
+        if (!fund) return;
+
+        // Reason: Get all loaded holdings from this fund
+        const loadedHoldings = fund.holdings.filter(h => this.loadedStocks.has(h.symbol));
+
+        if (loadedHoldings.length === 0) {
+            Toast.info('No loaded stocks in this hedge fund');
+            return;
+        }
+
+        // Reason: Check if all are currently visible
+        const allVisible = loadedHoldings.every(h => {
+            if (typeof Chart !== 'undefined' && Chart.activeIndividualStocks) {
+                const stock = Chart.activeIndividualStocks.get(h.symbol);
+                return stock && stock.visible;
+            }
+            return false;
+        });
+
+        // Reason: Toggle all - if all visible, hide all. Otherwise show all.
+        if (allVisible) {
+            // Hide all
+            loadedHoldings.forEach(h => {
+                if (typeof Chart !== 'undefined' && Chart.hideIndividualStock) {
+                    Chart.hideIndividualStock(h.symbol);
+                }
+            });
+            Toast.info(`Hidden ${fund.name} holdings from chart`);
+        } else {
+            // Show all
+            loadedHoldings.forEach(h => {
+                if (typeof Chart !== 'undefined' && Chart.showIndividualStock) {
+                    Chart.showIndividualStock(h.symbol);
+                }
+            });
+            Toast.success(`Showing ${fund.name} holdings on chart`);
+        }
+
+        // Reason: Re-render to update button states
+        this.renderHedgeFundCards();
+    },
+
+    /**
+     * Toggle combined portfolio view for a hedge fund
+     * Reason: Combines all loaded holdings into a weighted portfolio line
+     */
+    async toggleCombinedPortfolio(fundId) {
+        const fund = this.hedgeFundsData.find(f => f.id === fundId);
+        if (!fund) return;
+
+        // Reason: Check if portfolio is already combined
+        const isCombined = typeof Chart !== 'undefined' && Chart.activeHedgeFundPortfolios &&
+                          Chart.activeHedgeFundPortfolios.has(fundId);
+
+        if (isCombined) {
+            // Reason: Remove combined portfolio and show individual stocks
+            if (typeof Chart !== 'undefined' && Chart.hideHedgeFundPortfolio) {
+                await Chart.hideHedgeFundPortfolio(fundId);
+            }
+            Toast.info(`Showing individual holdings for ${fund.name}`);
+        } else {
+            // Reason: Create combined portfolio and hide individual stocks
+            const loadedHoldings = fund.holdings.filter(h => this.loadedStocks.has(h.symbol));
+
+            if (loadedHoldings.length === 0) {
+                Toast.info('No loaded stocks in this hedge fund');
+                return;
+            }
+
+            // Reason: Calculate weighted portfolio data
+            try {
+                const portfolioData = await this.calculateWeightedPortfolio(loadedHoldings);
+
+                if (portfolioData && portfolioData.length > 0) {
+                    // Reason: Show combined portfolio on chart
+                    if (typeof Chart !== 'undefined' && Chart.showHedgeFundPortfolio) {
+                        await Chart.showHedgeFundPortfolio(fundId, fund.name, portfolioData, loadedHoldings.map(h => h.symbol));
+                    }
+                    Toast.success(`Showing combined portfolio for ${fund.name}`);
+                } else {
+                    Toast.error('Failed to calculate portfolio data');
+                }
+            } catch (error) {
+                console.error('Error calculating portfolio:', error);
+                Toast.error('Failed to create combined portfolio');
+            }
+        }
+
+        // Reason: Re-render to update button states
+        this.renderHedgeFundCards();
+    },
+
+    /**
+     * Calculate weighted portfolio data from holdings
+     * Reason: Combines stock data based on percentage allocations
+     */
+    async calculateWeightedPortfolio(holdings) {
+        try {
+            // Reason: Fetch all stock data for loaded holdings
+            const stockDataPromises = holdings.map(async holding => {
+                const response = await fetch(`/api/get-daily?symbol=${holding.symbol}`);
+                const result = await response.json();
+                return {
+                    symbol: holding.symbol,
+                    percentage: holding.percentage,
+                    data: result.data ? result.data.map(d => ({
+                        date: new Date(d.date),
+                        close: d.close
+                    })) : []
+                };
+            });
+
+            const stocksData = await Promise.all(stockDataPromises);
+
+            // Reason: Filter out stocks with no data
+            const validStocks = stocksData.filter(s => s.data && s.data.length > 0);
+
+            if (validStocks.length === 0) {
+                return null;
+            }
+
+            // Reason: Find common date range (intersection of all stock dates)
+            const allDates = validStocks.map(s => s.data.map(d => d.date.getTime()));
+            const commonDates = allDates.reduce((acc, dates) => {
+                const dateSet = new Set(dates);
+                return acc.filter(date => dateSet.has(date));
+            }, allDates[0]);
+
+            // Reason: Calculate weighted portfolio value for each date
+            const portfolioData = commonDates.map(dateTime => {
+                const date = new Date(dateTime);
+                let weightedValue = 0;
+
+                validStocks.forEach(stock => {
+                    const dataPoint = stock.data.find(d => d.date.getTime() === dateTime);
+                    if (dataPoint) {
+                        // Reason: Weight by percentage allocation
+                        weightedValue += dataPoint.close * (stock.percentage / 100);
+                    }
+                });
+
+                return {
+                    date,
+                    close: weightedValue
+                };
+            });
+
+            // Reason: Sort by date
+            portfolioData.sort((a, b) => a.date - b.date);
+
+            return portfolioData;
+        } catch (error) {
+            console.error('Error calculating weighted portfolio:', error);
+            return null;
         }
     }
 };

@@ -21,6 +21,7 @@ const Chart = {
     activeSubsectors: new Map(),  // Map of subsectorKey -> {data, color, visible}
     activeSectors: new Map(),  // Map of sector -> {data, color, visible}
     activeIndividualStocks: new Map(),  // Map of symbol -> {data, color, visible}
+    activeHedgeFundPortfolios: new Map(),  // Map of fundId -> {name, data, color, stocks}
 
     /**
      * Initialize and render the chart
@@ -100,8 +101,29 @@ const Chart = {
         this.xScaleOriginal = this.xScale.copy();
 
         // Y scale (price)
-        const yMin = d3.min(this.data, d => d.low);
-        const yMax = d3.max(this.data, d => d.high);
+        let yMin = d3.min(this.data, d => d.low);
+        let yMax = d3.max(this.data, d => d.high);
+
+        // Reason: Include individual stocks in y-axis calculation to prevent data exceeding scale
+        this.activeIndividualStocks.forEach((stock, symbol) => {
+            if (stock.visible && stock.data && stock.data.length > 0) {
+                const stockMin = d3.min(stock.data, d => d.close);
+                const stockMax = d3.max(stock.data, d => d.close);
+                yMin = Math.min(yMin, stockMin);
+                yMax = Math.max(yMax, stockMax);
+            }
+        });
+
+        // Reason: Include hedge fund portfolios in y-axis calculation
+        this.activeHedgeFundPortfolios.forEach((portfolio, fundId) => {
+            if (portfolio.data && portfolio.data.length > 0) {
+                const portfolioMin = d3.min(portfolio.data, d => d.close);
+                const portfolioMax = d3.max(portfolio.data, d => d.close);
+                yMin = Math.min(yMin, portfolioMin);
+                yMax = Math.max(yMax, portfolioMax);
+            }
+        });
+
         const yPadding = (yMax - yMin) * 0.1;
 
         this.yScale = d3.scaleLinear()
@@ -960,7 +982,36 @@ const Chart = {
      * Reason: Redraw individual stock lines with updated xScale when user zooms
      */
     updateIndividualStocks() {
-        if (this.activeIndividualStocks.size === 0) return;
+        // Reason: Recalculate y-scale to include individual stocks
+        this.setupScales();
+
+        // Reason: Update axes with new scale
+        this.updateAxes();
+
+        // Reason: Update grid with new scale
+        this.svg.selectAll('.grid').remove();
+        this.drawGrid();
+
+        // Reason: Update candles with new scale
+        const visibleData = this.data.filter(d => {
+            return d.date >= this.xScale.domain()[0] && d.date <= this.xScale.domain()[1];
+        });
+        this.updateCandles(visibleData);
+
+        // Reason: Update subsectors if any
+        if (this.activeSubsectors.size > 0) {
+            this.updateSubsectors();
+        }
+
+        // Reason: Update sectors if any
+        if (this.activeSectors.size > 0) {
+            this.updateSectors();
+        }
+
+        // Reason: Update fibonacci if shown
+        if (this.showFibonacci && this.fibonacci) {
+            this.updateFibonacci();
+        }
 
         // Reason: Remove old individual stock lines and labels
         this.svg.selectAll('.individual-stock-line').remove();
@@ -1217,5 +1268,153 @@ const Chart = {
                 }
             });
         });
+    },
+
+    /**
+     * Show hedge fund portfolio as combined line
+     * Reason: Display weighted portfolio calculation as a single line
+     */
+    async showHedgeFundPortfolio(fundId, fundName, portfolioData, stockSymbols) {
+        // Reason: Hide individual stocks that are part of this portfolio
+        stockSymbols.forEach(symbol => {
+            if (this.activeIndividualStocks.has(symbol)) {
+                const stock = this.activeIndividualStocks.get(symbol);
+
+                // Reason: Only hide if not used by another portfolio
+                let usedByOther = false;
+                this.activeHedgeFundPortfolios.forEach((portfolio, otherFundId) => {
+                    if (otherFundId !== fundId && portfolio.stocks.includes(symbol)) {
+                        usedByOther = true;
+                    }
+                });
+
+                if (!usedByOther) {
+                    stock.visible = false;
+                }
+            }
+        });
+
+        // Reason: Generate color for this portfolio
+        const color = this.generateStockColor(fundId);
+
+        // Reason: Store portfolio data
+        this.activeHedgeFundPortfolios.set(fundId, {
+            name: fundName,
+            data: portfolioData,
+            color,
+            stocks: stockSymbols
+        });
+
+        // Reason: Update chart display
+        this.updateHedgeFundPortfolios();
+    },
+
+    /**
+     * Hide hedge fund portfolio and show individual stocks
+     * Reason: Remove combined portfolio line and restore individual stock lines
+     */
+    async hideHedgeFundPortfolio(fundId) {
+        if (!this.activeHedgeFundPortfolios.has(fundId)) return;
+
+        const portfolio = this.activeHedgeFundPortfolios.get(fundId);
+
+        // Reason: Remove portfolio from active portfolios
+        this.activeHedgeFundPortfolios.delete(fundId);
+
+        // Reason: Show individual stocks again
+        portfolio.stocks.forEach(symbol => {
+            if (this.activeIndividualStocks.has(symbol)) {
+                const stock = this.activeIndividualStocks.get(symbol);
+                stock.visible = true;
+            }
+        });
+
+        // Reason: Update chart display
+        this.updateHedgeFundPortfolios();
+    },
+
+    /**
+     * Draw hedge fund portfolio lines on chart
+     * Reason: Render portfolio lines similar to individual stocks
+     */
+    drawHedgeFundPortfolios() {
+        if (this.activeHedgeFundPortfolios.size === 0) return;
+
+        const line = d3.line()
+            .x(d => this.xScale(d.date))
+            .y(d => this.yScale(d.close))
+            .curve(d3.curveMonotoneX);
+
+        this.activeHedgeFundPortfolios.forEach((portfolio, fundId) => {
+            // Reason: Filter to visible date range
+            const visibleData = portfolio.data.filter(d => {
+                return d.date >= this.xScale.domain()[0] && d.date <= this.xScale.domain()[1];
+            });
+
+            if (visibleData.length === 0) return;
+
+            // Reason: Draw portfolio line
+            this.svg.append('path')
+                .datum(visibleData)
+                .attr('class', 'hedgefund-portfolio-line')
+                .attr('data-fund-id', fundId)
+                .attr('stroke', portfolio.color)
+                .attr('stroke-width', 2.5)
+                .attr('fill', 'none')
+                .attr('d', line);
+
+            // Reason: Add label at the end of the line
+            const lastPoint = visibleData[visibleData.length - 1];
+            this.svg.append('text')
+                .attr('class', 'hedgefund-portfolio-label')
+                .attr('data-fund-id', fundId)
+                .attr('x', this.xScale(lastPoint.date) + 5)
+                .attr('y', this.yScale(lastPoint.close))
+                .attr('fill', portfolio.color)
+                .attr('font-size', '12px')
+                .attr('font-weight', 'bold')
+                .attr('alignment-baseline', 'middle')
+                .text(portfolio.name);
+        });
+    },
+
+    /**
+     * Update hedge fund portfolios display
+     * Reason: Recalculate scales and redraw all chart elements including portfolios
+     */
+    updateHedgeFundPortfolios() {
+        // Reason: Recalculate y-scale to include portfolios
+        this.setupScales();
+
+        // Reason: Update axes with new scale
+        this.updateAxes();
+
+        // Reason: Update grid with new scale
+        this.svg.selectAll('.grid').remove();
+        this.drawGrid();
+
+        // Reason: Update candles with new scale
+        const visibleData = this.data.filter(d => {
+            return d.date >= this.xScale.domain()[0] && d.date <= this.xScale.domain()[1];
+        });
+        this.updateCandles(visibleData);
+
+        // Reason: Update subsectors/sectors/fibonacci if any
+        if (this.activeSubsectors.size > 0) this.updateSubsectors();
+        if (this.activeSectors.size > 0) this.updateSectors();
+        if (this.showFibonacci && this.fibonacci) this.updateFibonacci();
+
+        // Reason: Redraw individual stock lines (only visible ones)
+        this.svg.selectAll('.individual-stock-line').remove();
+        this.svg.selectAll('.individual-stock-label').remove();
+        this.drawIndividualStocks();
+
+        // Reason: Redraw portfolio lines
+        this.svg.selectAll('.hedgefund-portfolio-line').remove();
+        this.svg.selectAll('.hedgefund-portfolio-label').remove();
+        this.drawHedgeFundPortfolios();
+
+        // Reason: Update individual stocks section
+        this.updateIndividualStocksSection();
     }
 };

@@ -687,6 +687,12 @@ const Sidebar = {
             // Re-render sidebar to update display
             await this.render();
 
+            // Reason: Update hedge funds display to reflect newly loaded stock
+            if (typeof HedgeFunds !== 'undefined' && HedgeFunds.updateLoadedStocks) {
+                await HedgeFunds.updateLoadedStocks();
+                HedgeFunds.renderHedgeFundCards();
+            }
+
             return { candles, overview, incomeStatements, yoyChanges };
         } catch (error) {
             console.error(`Failed to fetch complete data for ${symbol}:`, error);

@@ -1836,6 +1836,68 @@ body {
     color: #1d9bf0;
 }
 
+.hedgefund-header-buttons {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.hedgefund-master-toggle-btn {
+    background: none;
+    border: 1px solid #2f3336;
+    border-radius: 6px;
+    color: #71767b;
+    cursor: pointer;
+    padding: 6px 10px;
+    font-size: 14px;
+    transition: all 0.2s ease;
+}
+
+.hedgefund-master-toggle-btn:hover {
+    background-color: #1d9bf0;
+    border-color: #1d9bf0;
+    color: #ffffff;
+}
+
+.hedgefund-master-toggle-btn[data-active="true"] {
+    background-color: #00ba7c;
+    border-color: #00ba7c;
+    color: #ffffff;
+}
+
+.hedgefund-master-toggle-btn[data-active="true"]:hover {
+    background-color: #00a368;
+    border-color: #00a368;
+}
+
+.hedgefund-combine-btn {
+    background: none;
+    border: 1px solid #2f3336;
+    border-radius: 6px;
+    color: #71767b;
+    cursor: pointer;
+    padding: 6px 10px;
+    font-size: 14px;
+    transition: all 0.2s ease;
+}
+
+.hedgefund-combine-btn:hover {
+    background-color: #1d9bf0;
+    border-color: #1d9bf0;
+    color: #ffffff;
+}
+
+.hedgefund-combine-btn[data-active="true"] {
+    background-color: #7856ff;
+    border-color: #7856ff;
+    color: #ffffff;
+}
+
+.hedgefund-combine-btn[data-active="true"]:hover {
+    background-color: #6844e8;
+    border-color: #6844e8;
+}
+
 .hedgefund-expand-btn {
     background: none;
     border: none;
