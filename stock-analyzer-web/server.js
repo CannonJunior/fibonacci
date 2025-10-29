@@ -281,6 +281,111 @@ const server = http.createServer((req, res) => {
         return;
     }
 
+    // API endpoint to register symbol for updates
+    if (pathname === '/api/update/register' && req.method === 'POST') {
+        let body = '';
+        req.on('data', chunk => { body += chunk.toString(); });
+        req.on('end', () => {
+            try {
+                const { symbol, priority } = JSON.parse(body);
+                db.setSymbolActive(symbol, priority || 3);
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: true }));
+            } catch (error) {
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: error.message }));
+            }
+        });
+        return;
+    }
+
+    // API endpoint to get update status for a symbol
+    if (pathname === '/api/update/status') {
+        const symbol = parsedUrl.query.symbol;
+        if (!symbol) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Symbol parameter required' }));
+            return;
+        }
+
+        const tracking = db.getUpdateTracking(symbol);
+        const lastDate = db.getLastDailyDate(symbol);
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+            symbol,
+            tracking,
+            lastDate
+        }));
+        return;
+    }
+
+    // API endpoint to get quota status
+    if (pathname === '/api/update/quota') {
+        const alphaVantage = db.getAPIQuota('alphaVantage');
+        const finnhub = db.getAPIQuota('finnhub');
+
+        const canUpdate = db.canMakeAPICall('alphaVantage') || db.canMakeAPICall('finnhub');
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+            canUpdate,
+            alphaVantage: {
+                callsToday: alphaVantage.calls_today,
+                dailyLimit: alphaVantage.daily_limit,
+                callsThisMinute: alphaVantage.calls_this_minute,
+                minuteLimit: alphaVantage.minute_limit,
+                remaining: alphaVantage.daily_limit - alphaVantage.calls_today
+            },
+            finnhub: {
+                callsToday: finnhub.calls_today,
+                dailyLimit: finnhub.daily_limit,
+                callsThisMinute: finnhub.calls_this_minute,
+                minuteLimit: finnhub.minute_limit,
+                remaining: finnhub.daily_limit - finnhub.calls_today
+            }
+        }));
+        return;
+    }
+
+    // API endpoint to execute an update
+    if (pathname === '/api/update/execute' && req.method === 'POST') {
+        let body = '';
+        req.on('data', chunk => { body += chunk.toString(); });
+        req.on('end', async () => {
+            try {
+                const { symbol, updateType } = JSON.parse(body);
+
+                // Check quota
+                if (!db.canMakeAPICall('alphaVantage')) {
+                    res.writeHead(429, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: 'API quota exceeded' }));
+                    return;
+                }
+
+                // Record the API call
+                db.recordAPICall('alphaVantage');
+
+                // For now, just update tracking - actual update logic will be in client
+                // This endpoint serves as a quota gate
+                db.updateTrackingRecord(symbol, updateType);
+
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({
+                    success: true,
+                    symbol,
+                    updateType,
+                    timestamp: new Date().toISOString()
+                }));
+            } catch (error) {
+                db.recordUpdateFailure(symbol, error.message);
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: error.message }));
+            }
+        });
+        return;
+    }
+
     // Serve static files
     let filePath = '.' + req.url;
     if (filePath === './') {

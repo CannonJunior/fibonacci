@@ -44,6 +44,11 @@ const App = {
             this.loadData();
         });
 
+        // Update visible stocks button
+        document.getElementById('updateVisibleButton').addEventListener('click', () => {
+            UpdateManager.updateVisibleStocks();
+        });
+
         // Retry button
         document.getElementById('retryBtn').addEventListener('click', () => {
             this.loadData();

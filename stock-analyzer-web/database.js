@@ -111,6 +111,45 @@ function initializeDatabase() {
         )
     `);
 
+    // Reason: Table for tracking update status and API quota usage
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS update_tracking (
+            symbol TEXT PRIMARY KEY,
+            last_daily_update DATETIME,
+            last_overview_update DATETIME,
+            last_financials_update DATETIME,
+            update_priority INTEGER DEFAULT 3,
+            failed_attempts INTEGER DEFAULT 0,
+            last_error TEXT,
+            is_active INTEGER DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    `);
+
+    // Reason: Table for API quota tracking
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS api_quota (
+            provider TEXT PRIMARY KEY,
+            calls_today INTEGER DEFAULT 0,
+            calls_this_minute INTEGER DEFAULT 0,
+            last_call_time DATETIME,
+            quota_reset_time DATETIME,
+            minute_reset_time DATETIME,
+            daily_limit INTEGER NOT NULL,
+            minute_limit INTEGER NOT NULL,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    `);
+
+    // Reason: Initialize quota tracking for providers
+    db.exec(`
+        INSERT OR IGNORE INTO api_quota (provider, daily_limit, minute_limit, quota_reset_time, minute_reset_time)
+        VALUES
+            ('alphaVantage', 25, 5, datetime('now', '+1 day'), datetime('now', '+1 minute')),
+            ('finnhub', 10000, 60, datetime('now', '+1 day'), datetime('now', '+1 minute'))
+    `);
+
     // Create indices for faster lookups
     db.exec(`
         CREATE INDEX IF NOT EXISTS idx_daily_symbol_date ON daily_prices(symbol, date);
@@ -118,6 +157,8 @@ function initializeDatabase() {
         CREATE INDEX IF NOT EXISTS idx_income_symbol_date ON income_statements(symbol, fiscal_date_ending);
         CREATE INDEX IF NOT EXISTS idx_subsector_key_date ON subsector_performance(subsector_key, date);
         CREATE INDEX IF NOT EXISTS idx_sector_date ON sector_performance(sector, date);
+        CREATE INDEX IF NOT EXISTS idx_update_priority ON update_tracking(update_priority, last_daily_update);
+        CREATE INDEX IF NOT EXISTS idx_update_active ON update_tracking(is_active);
     `);
 
     console.log('Database initialized at:', DB_PATH);
@@ -462,6 +503,223 @@ function hasSectorPerformance(sector) {
     return result.count > 0;
 }
 
+/**
+ * Update tracking for a symbol
+ * @param {string} symbol - Stock symbol
+ * @param {string} updateType - Type of update: 'daily', 'overview', or 'financials'
+ * @param {number} priority - Update priority (1-4)
+ */
+function updateTrackingRecord(symbol, updateType, priority = 3) {
+    const fieldMap = {
+        daily: 'last_daily_update',
+        overview: 'last_overview_update',
+        financials: 'last_financials_update'
+    };
+
+    const field = fieldMap[updateType];
+    if (!field) {
+        throw new Error(`Invalid update type: ${updateType}`);
+    }
+
+    const stmt = db.prepare(`
+        INSERT INTO update_tracking (symbol, ${field}, update_priority, updated_at)
+        VALUES (?, datetime('now'), ?, datetime('now'))
+        ON CONFLICT(symbol) DO UPDATE SET
+            ${field} = datetime('now'),
+            update_priority = ?,
+            failed_attempts = 0,
+            last_error = NULL,
+            updated_at = datetime('now')
+    `);
+
+    stmt.run(symbol, priority, priority);
+}
+
+/**
+ * Record failed update attempt
+ * @param {string} symbol - Stock symbol
+ * @param {string} errorMessage - Error message
+ */
+function recordUpdateFailure(symbol, errorMessage) {
+    const stmt = db.prepare(`
+        INSERT INTO update_tracking (symbol, failed_attempts, last_error, updated_at)
+        VALUES (?, 1, ?, datetime('now'))
+        ON CONFLICT(symbol) DO UPDATE SET
+            failed_attempts = failed_attempts + 1,
+            last_error = ?,
+            updated_at = datetime('now')
+    `);
+
+    stmt.run(symbol, errorMessage, errorMessage);
+}
+
+/**
+ * Get update tracking info for a symbol
+ * @param {string} symbol - Stock symbol
+ * @returns {Object|null} Update tracking info or null
+ */
+function getUpdateTracking(symbol) {
+    const stmt = db.prepare(`
+        SELECT * FROM update_tracking WHERE symbol = ?
+    `);
+
+    return stmt.get(symbol);
+}
+
+/**
+ * Get all symbols that need updating
+ * @param {string} updateType - Type of update: 'daily', 'overview', or 'financials'
+ * @param {number} maxAge - Maximum age in hours before update needed
+ * @param {number} limit - Maximum number of symbols to return
+ * @returns {Array} Array of symbols
+ */
+function getSymbolsNeedingUpdate(updateType, maxAge = 24, limit = 10) {
+    const fieldMap = {
+        daily: 'last_daily_update',
+        overview: 'last_overview_update',
+        financials: 'last_financials_update'
+    };
+
+    const field = fieldMap[updateType];
+    if (!field) {
+        throw new Error(`Invalid update type: ${updateType}`);
+    }
+
+    const stmt = db.prepare(`
+        SELECT ut.symbol, ut.update_priority, ut.${field}
+        FROM update_tracking ut
+        WHERE ut.is_active = 1
+          AND (ut.${field} IS NULL OR datetime(ut.${field}) < datetime('now', '-${maxAge} hours'))
+          AND ut.failed_attempts < 3
+        ORDER BY ut.update_priority ASC, ut.${field} ASC
+        LIMIT ?
+    `);
+
+    return stmt.all(limit);
+}
+
+/**
+ * Set symbol as active (being tracked)
+ * @param {string} symbol - Stock symbol
+ * @param {number} priority - Update priority (1-4)
+ */
+function setSymbolActive(symbol, priority = 3) {
+    const stmt = db.prepare(`
+        INSERT INTO update_tracking (symbol, is_active, update_priority, created_at, updated_at)
+        VALUES (?, 1, ?, datetime('now'), datetime('now'))
+        ON CONFLICT(symbol) DO UPDATE SET
+            is_active = 1,
+            update_priority = ?,
+            updated_at = datetime('now')
+    `);
+
+    stmt.run(symbol, priority, priority);
+}
+
+/**
+ * Get API quota status for a provider
+ * @param {string} provider - Provider name
+ * @returns {Object|null} Quota status or null
+ */
+function getAPIQuota(provider) {
+    const stmt = db.prepare(`SELECT * FROM api_quota WHERE provider = ?`);
+    return stmt.get(provider);
+}
+
+/**
+ * Check if API call is allowed within quota
+ * @param {string} provider - Provider name
+ * @returns {boolean} True if call is allowed
+ */
+function canMakeAPICall(provider) {
+    const quota = getAPIQuota(provider);
+    if (!quota) return false;
+
+    const now = new Date();
+
+    // Check if daily quota needs reset
+    if (new Date(quota.quota_reset_time) <= now) {
+        resetDailyQuota(provider);
+        return true;
+    }
+
+    // Check if minute quota needs reset
+    if (new Date(quota.minute_reset_time) <= now) {
+        resetMinuteQuota(provider);
+    }
+
+    // Refetch after potential resets
+    const current = getAPIQuota(provider);
+    return current.calls_today < current.daily_limit && current.calls_this_minute < current.minute_limit;
+}
+
+/**
+ * Record an API call
+ * @param {string} provider - Provider name
+ */
+function recordAPICall(provider) {
+    const stmt = db.prepare(`
+        UPDATE api_quota
+        SET calls_today = calls_today + 1,
+            calls_this_minute = calls_this_minute + 1,
+            last_call_time = datetime('now'),
+            updated_at = datetime('now')
+        WHERE provider = ?
+    `);
+
+    stmt.run(provider);
+}
+
+/**
+ * Reset daily quota for a provider
+ * @param {string} provider - Provider name
+ */
+function resetDailyQuota(provider) {
+    const stmt = db.prepare(`
+        UPDATE api_quota
+        SET calls_today = 0,
+            quota_reset_time = datetime('now', '+1 day'),
+            updated_at = datetime('now')
+        WHERE provider = ?
+    `);
+
+    stmt.run(provider);
+}
+
+/**
+ * Reset minute quota for a provider
+ * @param {string} provider - Provider name
+ */
+function resetMinuteQuota(provider) {
+    const stmt = db.prepare(`
+        UPDATE api_quota
+        SET calls_this_minute = 0,
+            minute_reset_time = datetime('now', '+1 minute'),
+            updated_at = datetime('now')
+        WHERE provider = ?
+    `);
+
+    stmt.run(provider);
+}
+
+/**
+ * Get last date in daily prices for a symbol
+ * @param {string} symbol - Stock symbol
+ * @returns {string|null} Last date or null
+ */
+function getLastDailyDate(symbol) {
+    const stmt = db.prepare(`
+        SELECT date
+        FROM daily_prices
+        WHERE symbol = ?
+        ORDER BY date DESC
+        LIMIT 1
+    `);
+
+    const result = stmt.get(symbol);
+    return result ? result.date : null;
+}
+
 // Initialize database on module load
 initializeDatabase();
 
@@ -482,5 +740,16 @@ module.exports = {
     hasSubsectorPerformance,
     saveSectorPerformance,
     getSectorPerformance,
-    hasSectorPerformance
+    hasSectorPerformance,
+    updateTrackingRecord,
+    recordUpdateFailure,
+    getUpdateTracking,
+    getSymbolsNeedingUpdate,
+    setSymbolActive,
+    getAPIQuota,
+    canMakeAPICall,
+    recordAPICall,
+    resetDailyQuota,
+    resetMinuteQuota,
+    getLastDailyDate
 };

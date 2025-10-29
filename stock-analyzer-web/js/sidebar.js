@@ -665,6 +665,12 @@ const Sidebar = {
                 stock.marketCap = overview.marketCap;
                 stock.candles = candles;
                 stock.hasChartData = true;
+
+                // Reason: Fetch last update timestamp from database
+                const updateStatus = await UpdateManager.getUpdateStatus(symbol);
+                if (updateStatus && updateStatus.lastDate) {
+                    stock.lastUpdate = updateStatus.lastDate;
+                }
             }
 
             // 5. If loadChartData is true, update the main chart view
@@ -875,10 +881,19 @@ const Sidebar = {
             const isExpanded = stock.isExpanded || false;
             const expandIcon = isExpanded ? 'fa-down-left-and-up-right-to-center' : 'fa-expand-alt';
 
+            // Reason: Get data freshness indicator
+            const lastUpdate = stock.lastUpdate || null;
+            const freshness = UpdateManager.calculateFreshness(lastUpdate);
+            const freshnessIndicator = lastUpdate
+                ? `<span class="freshness-indicator freshness-${freshness.status}" title="${freshness.message}">●</span>`
+                : '';
+
             return `
                 <div class="stock-item ${isActive ? 'active' : ''} ${hasData}" data-symbol="${stock.symbol}">
                     <div class="stock-item-header">
-                        <span class="stock-item-symbol" data-action="select-stock">${stock.symbol}</span>
+                        <span class="stock-item-symbol" data-action="select-stock">
+                            ${freshnessIndicator}${stock.symbol}
+                        </span>
                         <div class="stock-item-header-right">
                             <span class="stock-item-change ${isPositive ? 'positive' : 'negative'}">
                                 ${displayValue}
@@ -1569,15 +1584,31 @@ const Sidebar = {
 
         console.log(`📈 Rendering summary cards: ${completeSectors.length} complete sectors, ${completeSubsectors.length} complete subsectors`);
 
-        // Reason: Calculate and save performance data for all complete sectors and subsectors
-        for (const sector of completeSectors) {
-            console.log(`🔢 Calculating performance for sector: ${sector.name}`);
-            await this.calculateAndSaveSectorPerformance(sector.name);
+        // Reason: Track which sectors/subsectors have already been calculated to avoid redundant calculations
+        if (!this.calculatedPerformance) {
+            this.calculatedPerformance = {
+                sectors: new Set(),
+                subsectors: new Set()
+            };
         }
 
+        // Reason: Only calculate performance for NEW complete sectors (not already calculated)
+        for (const sector of completeSectors) {
+            if (!this.calculatedPerformance.sectors.has(sector.name)) {
+                console.log(`🔢 Calculating performance for sector: ${sector.name}`);
+                await this.calculateAndSaveSectorPerformance(sector.name);
+                this.calculatedPerformance.sectors.add(sector.name);
+            }
+        }
+
+        // Reason: Only calculate performance for NEW complete subsectors (not already calculated)
         for (const subsector of completeSubsectors) {
-            console.log(`🔢 Calculating performance for subsector: ${subsector.sector}|${subsector.subsector}`);
-            await this.calculateAndSaveSubsectorPerformance(subsector.sector, subsector.subsector);
+            const subsectorKey = `${subsector.sector}|${subsector.subsector}`;
+            if (!this.calculatedPerformance.subsectors.has(subsectorKey)) {
+                console.log(`🔢 Calculating performance for subsector: ${subsectorKey}`);
+                await this.calculateAndSaveSubsectorPerformance(subsector.sector, subsector.subsector);
+                this.calculatedPerformance.subsectors.add(subsectorKey);
+            }
         }
 
         // Render sector cards

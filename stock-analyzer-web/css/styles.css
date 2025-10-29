@@ -230,6 +230,24 @@ body {
     font-size: 10px;
 }
 
+/* Data Freshness Indicators */
+.freshness-indicator {
+    font-size: 8px;
+    margin-right: 4px;
+}
+
+.freshness-indicator.freshness-fresh {
+    color: #00ba7c;
+}
+
+.freshness-indicator.freshness-aging {
+    color: #ffd400;
+}
+
+.freshness-indicator.freshness-stale {
+    color: #f4212e;
+}
+
 /* Expanded Stock Content */
 .stock-expanded {
     margin-top: 12px;
