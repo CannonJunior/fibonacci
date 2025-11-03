@@ -24,6 +24,19 @@ const Chart = {
     activeHedgeFundPortfolios: new Map(),  // Map of fundId -> {name, data, color, stocks}
 
     /**
+     * Check if chart should be in percentage mode
+     * Reason: When sectors, subsectors, or hedge funds are displayed, show percentage changes
+     * @returns {boolean} True if any percentage-based overlays are active
+     */
+    isPercentageMode() {
+        // Reason: Percentage mode when any subsectors, sectors, or hedge funds are visible
+        const hasSubsectors = Array.from(this.activeSubsectors.values()).some(s => s.visible);
+        const hasSectors = Array.from(this.activeSectors.values()).some(s => s.visible);
+        const hasHedgeFunds = this.activeHedgeFundPortfolios.size > 0;
+        return hasSubsectors || hasSectors || hasHedgeFunds;
+    },
+
+    /**
      * Initialize and render the chart
      * @param {Array} candles - Array of candle data
      * @param {Object} fibonacciData - Fibonacci retracement data
@@ -130,10 +143,12 @@ const Chart = {
             .domain([yMin - yPadding, yMax + yPadding])
             .range([this.height, 0]);
 
-        // Reason: Right Y scale for subsector and sector percentage data
-        // Find min/max across all active subsectors and sectors
+        // Reason: Right Y scale for percentage data (subsectors, sectors, individual stocks, hedge funds)
+        // Find min/max across all active percentage-based data
         let percentMin = 0;
         let percentMax = 0;
+
+        // Reason: Include subsectors
         this.activeSubsectors.forEach(subsector => {
             if (subsector.data && subsector.data.length > 0) {
                 const min = d3.min(subsector.data, d => d.percentChange);
@@ -142,12 +157,47 @@ const Chart = {
                 percentMax = Math.max(percentMax, max);
             }
         });
+
+        // Reason: Include sectors
         this.activeSectors.forEach(sector => {
             if (sector.data && sector.data.length > 0) {
                 const min = d3.min(sector.data, d => d.percentChange);
                 const max = d3.max(sector.data, d => d.percentChange);
                 percentMin = Math.min(percentMin, min);
                 percentMax = Math.max(percentMax, max);
+            }
+        });
+
+        // Reason: Include main stock (candlestick data) when in percentage mode
+        if (this.isPercentageMode() && this.data.length > 0) {
+            const firstClose = this.data[0].close;
+            const stockPercentMin = d3.min(this.data, d => ((d.low - firstClose) / firstClose) * 100);
+            const stockPercentMax = d3.max(this.data, d => ((d.high - firstClose) / firstClose) * 100);
+            percentMin = Math.min(percentMin, stockPercentMin);
+            percentMax = Math.max(percentMax, stockPercentMax);
+        }
+
+        // Reason: Include individual stocks when in percentage mode
+        if (this.isPercentageMode()) {
+            this.activeIndividualStocks.forEach((stock, symbol) => {
+                if (stock.visible && stock.data && stock.data.length > 0) {
+                    const firstPrice = stock.data[0].close;
+                    const stockMin = d3.min(stock.data, d => ((d.close - firstPrice) / firstPrice) * 100);
+                    const stockMax = d3.max(stock.data, d => ((d.close - firstPrice) / firstPrice) * 100);
+                    percentMin = Math.min(percentMin, stockMin);
+                    percentMax = Math.max(percentMax, stockMax);
+                }
+            });
+        }
+
+        // Reason: Include hedge fund portfolios (always in percentage mode)
+        this.activeHedgeFundPortfolios.forEach((portfolio, fundId) => {
+            if (portfolio.data && portfolio.data.length > 0) {
+                const firstClose = portfolio.data[0].close;
+                const portfolioMin = d3.min(portfolio.data, d => ((d.close - firstClose) / firstClose) * 100);
+                const portfolioMax = d3.max(portfolio.data, d => ((d.close - firstClose) / firstClose) * 100);
+                percentMin = Math.min(percentMin, portfolioMin);
+                percentMax = Math.max(percentMax, portfolioMax);
             }
         });
 
@@ -227,8 +277,24 @@ const Chart = {
      * Draw candlesticks with interaction
      */
     drawCandles() {
+        // Reason: Check if we should use percentage mode
+        const percentageMode = this.isPercentageMode();
+
+        // Reason: Calculate percentage data if needed
+        let candleData = this.data;
+        if (percentageMode && this.data.length > 0) {
+            const firstClose = this.data[0].close;
+            candleData = this.data.map(d => ({
+                ...d,
+                percentHigh: ((d.high - firstClose) / firstClose) * 100,
+                percentLow: ((d.low - firstClose) / firstClose) * 100,
+                percentOpen: ((d.open - firstClose) / firstClose) * 100,
+                percentClose: ((d.close - firstClose) / firstClose) * 100
+            }));
+        }
+
         const candleGroup = this.svg.selectAll('.candle-group')
-            .data(this.data)
+            .data(candleData)
             .enter()
             .append('g')
             .attr('class', d => {
@@ -245,17 +311,21 @@ const Chart = {
             .attr('class', 'candle-wick')
             .attr('x1', 0)
             .attr('x2', 0)
-            .attr('y1', d => this.yScale(d.high))
-            .attr('y2', d => this.yScale(d.low));
+            .attr('y1', d => percentageMode ? this.yScalePercent(d.percentHigh) : this.yScale(d.high))
+            .attr('y2', d => percentageMode ? this.yScalePercent(d.percentLow) : this.yScale(d.low));
 
         // Draw candle bodies
         candleGroup.append('rect')
             .attr('class', 'candle-body')
             .attr('x', -CONFIG.chart.candleWidth / 2)
-            .attr('y', d => this.yScale(Math.max(d.open, d.close)))
+            .attr('y', d => percentageMode
+                ? this.yScalePercent(Math.max(d.percentOpen, d.percentClose))
+                : this.yScale(Math.max(d.open, d.close)))
             .attr('width', CONFIG.chart.candleWidth)
             .attr('height', d => {
-                const height = Math.abs(this.yScale(d.open) - this.yScale(d.close));
+                const height = percentageMode
+                    ? Math.abs(this.yScalePercent(d.percentOpen) - this.yScalePercent(d.percentClose))
+                    : Math.abs(this.yScale(d.open) - this.yScale(d.close));
                 return height === 0 ? 1 : height;
             });
 
@@ -933,11 +1003,8 @@ const Chart = {
     drawIndividualStocks() {
         if (this.activeIndividualStocks.size === 0) return;
 
-        // Reason: Create line generator using price scale (yScale), not percent scale
-        const line = d3.line()
-            .x(d => this.xScale(d.date))
-            .y(d => this.yScale(d.close))
-            .curve(d3.curveMonotoneX);
+        // Reason: Check if we should use percentage mode
+        const percentageMode = this.isPercentageMode();
 
         this.activeIndividualStocks.forEach((stock, symbol) => {
             if (!stock.visible) return;
@@ -950,9 +1017,30 @@ const Chart = {
 
             if (visibleData.length === 0) return;
 
+            // Reason: Convert to percentage data if in percentage mode
+            let dataToPlot = visibleData;
+            if (percentageMode && visibleData.length > 0) {
+                const firstPrice = visibleData[0].close;
+                dataToPlot = visibleData.map(d => ({
+                    date: d.date,
+                    percentChange: ((d.close - firstPrice) / firstPrice) * 100
+                }));
+            }
+
+            // Reason: Create line generator based on mode
+            const line = percentageMode
+                ? d3.line()
+                    .x(d => this.xScale(d.date))
+                    .y(d => this.yScalePercent(d.percentChange))
+                    .curve(d3.curveMonotoneX)
+                : d3.line()
+                    .x(d => this.xScale(d.date))
+                    .y(d => this.yScale(d.close))
+                    .curve(d3.curveMonotoneX);
+
             // Reason: Draw line path
             this.svg.append('path')
-                .datum(visibleData)
+                .datum(dataToPlot)
                 .attr('class', 'individual-stock-line')
                 .attr('data-symbol', symbol)
                 .attr('fill', 'none')
@@ -962,13 +1050,17 @@ const Chart = {
                 .attr('d', line);
 
             // Reason: Add label at end of line
-            const lastPoint = visibleData[visibleData.length - 1];
+            const lastPoint = dataToPlot[dataToPlot.length - 1];
             if (lastPoint) {
+                const yPos = percentageMode
+                    ? this.yScalePercent(lastPoint.percentChange)
+                    : this.yScale(lastPoint.close);
+
                 this.svg.append('text')
                     .attr('class', 'individual-stock-label')
                     .attr('data-symbol', symbol)
                     .attr('x', this.xScale(lastPoint.date) + 5)
-                    .attr('y', this.yScale(lastPoint.close))
+                    .attr('y', yPos)
                     .attr('fill', stock.color)
                     .attr('font-size', '12px')
                     .attr('font-weight', '700')
@@ -1340,10 +1432,8 @@ const Chart = {
     drawHedgeFundPortfolios() {
         if (this.activeHedgeFundPortfolios.size === 0) return;
 
-        const line = d3.line()
-            .x(d => this.xScale(d.date))
-            .y(d => this.yScale(d.close))
-            .curve(d3.curveMonotoneX);
+        // Reason: Hedge funds always trigger percentage mode, so always use percentage scaling
+        const percentageMode = true;
 
         this.activeHedgeFundPortfolios.forEach((portfolio, fundId) => {
             // Reason: Filter to visible date range
@@ -1353,9 +1443,25 @@ const Chart = {
 
             if (visibleData.length === 0) return;
 
+            // Reason: Convert to percentage data
+            let dataToPlot = visibleData;
+            if (visibleData.length > 0) {
+                const firstClose = visibleData[0].close;
+                dataToPlot = visibleData.map(d => ({
+                    date: d.date,
+                    percentChange: ((d.close - firstClose) / firstClose) * 100
+                }));
+            }
+
+            // Reason: Create line generator using percentage scale
+            const line = d3.line()
+                .x(d => this.xScale(d.date))
+                .y(d => this.yScalePercent(d.percentChange))
+                .curve(d3.curveMonotoneX);
+
             // Reason: Draw portfolio line
             this.svg.append('path')
-                .datum(visibleData)
+                .datum(dataToPlot)
                 .attr('class', 'hedgefund-portfolio-line')
                 .attr('data-fund-id', fundId)
                 .attr('stroke', portfolio.color)
@@ -1364,12 +1470,12 @@ const Chart = {
                 .attr('d', line);
 
             // Reason: Add label at the end of the line
-            const lastPoint = visibleData[visibleData.length - 1];
+            const lastPoint = dataToPlot[dataToPlot.length - 1];
             this.svg.append('text')
                 .attr('class', 'hedgefund-portfolio-label')
                 .attr('data-fund-id', fundId)
                 .attr('x', this.xScale(lastPoint.date) + 5)
-                .attr('y', this.yScale(lastPoint.close))
+                .attr('y', this.yScalePercent(lastPoint.percentChange))
                 .attr('fill', portfolio.color)
                 .attr('font-size', '12px')
                 .attr('font-weight', 'bold')

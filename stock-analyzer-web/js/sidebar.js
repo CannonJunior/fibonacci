@@ -17,6 +17,8 @@ const Sidebar = {
     async init() {
         this.setupEventListeners();
         await this.loadAllSP500Stocks();
+        // Reason: Load previously fetched stocks from database to show in Fetch Data Panel
+        await this.loadStocksFromDatabase();
         this.populateFetchDataPanel();
     },
 
@@ -317,6 +319,60 @@ const Sidebar = {
             this.initializeFilterOptions();
         } catch (error) {
             console.error('Failed to load S&P 500 stocks:', error);
+        }
+    },
+
+    /**
+     * Load previously fetched stocks from database
+     * Reason: This ensures stocks with complete financial data show as loaded in Fetch Data Panel after refresh
+     */
+    async loadStocksFromDatabase() {
+        try {
+            // Get all symbols that have daily data
+            const dbResponse = await fetch('/api/get-all-symbols');
+            const dbResult = await dbResponse.json();
+            const symbols = dbResult.symbols || [];
+
+            console.log(`Loading ${symbols.length} stocks from database...`);
+
+            // For each symbol, check if it has complete data (overview + income statements)
+            for (const symbol of symbols) {
+                try {
+                    // Check if stock already in loadedStocks (from loadAllSP500Stocks)
+                    const existingStock = this.loadedStocks.find(s => s.symbol === symbol);
+                    if (!existingStock) {
+                        console.warn(`Symbol ${symbol} in database but not in S&P 500 list`);
+                        continue;
+                    }
+
+                    // Fetch company overview
+                    const overviewResponse = await fetch(`/api/get-company-overview?symbol=${symbol}`);
+                    const overviewResult = await overviewResponse.json();
+                    const overview = overviewResult.overview;
+
+                    // Fetch income statements
+                    const incomeResponse = await fetch(`/api/get-income-statements?symbol=${symbol}`);
+                    const incomeResult = await incomeResponse.json();
+                    const incomeStatements = incomeResult.statements;
+
+                    // Reason: Only add to loadedStocks if we have complete data
+                    if (overview && incomeStatements && incomeStatements.length > 0) {
+                        // Update the existing stock in loadedStocks with financial data
+                        existingStock.overview = overview;
+                        existingStock.incomeStatements = incomeStatements;
+                        existingStock.yoyChanges = API.calculateYoYChanges(incomeStatements);
+                        existingStock.marketCap = overview.marketCap;
+
+                        console.log(`Loaded complete data for ${symbol}`);
+                    }
+                } catch (error) {
+                    console.error(`Failed to load data for ${symbol}:`, error);
+                }
+            }
+
+            console.log('Finished loading stocks from database');
+        } catch (error) {
+            console.error('Failed to load stocks from database:', error);
         }
     },
 
