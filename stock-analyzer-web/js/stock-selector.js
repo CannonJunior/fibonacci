@@ -107,13 +107,22 @@ const StockSelector = {
             return;
         }
 
-        // Reason: Check which stocks exist in database
+        // Reason: Check which stocks exist in database and have earnings data
         const stocksInDb = await this.checkStocksInDatabase(matches.map(s => s.symbol));
+        const stocksWithEarnings = await this.checkStocksWithEarnings(matches.map(s => s.symbol));
 
         autocompleteList.innerHTML = matches.map((stock, index) => {
             const inDatabase = stocksInDb.has(stock.symbol);
+            const hasEarnings = stocksWithEarnings.has(stock.symbol);
+            // Reason: Determine highlight class - purple if has both data and earnings, green if just data
+            let highlightClass = '';
+            if (inDatabase && hasEarnings) {
+                highlightClass = 'has-earnings-data';
+            } else if (inDatabase) {
+                highlightClass = 'in-database';
+            }
             return `
-                <div class="autocomplete-item ${index === this.activeIndex ? 'active' : ''} ${inDatabase ? 'in-database' : ''}"
+                <div class="autocomplete-item ${index === this.activeIndex ? 'active' : ''} ${highlightClass}"
                      data-symbol="${stock.symbol}">
                     <span class="autocomplete-symbol">${stock.symbol}</span>
                     <span class="autocomplete-name">${stock.name}</span>
@@ -158,6 +167,31 @@ const StockSelector = {
     },
 
     /**
+     * Check which stocks have earnings data
+     * @param {Array<string>} symbols - Array of stock symbols to check
+     * @returns {Promise<Set<string>>} Set of symbols that have earnings data
+     */
+    async checkStocksWithEarnings(symbols) {
+        const withEarnings = new Set();
+
+        // Reason: Check all symbols in parallel for better performance
+        const checks = symbols.map(async symbol => {
+            try {
+                const response = await fetch(`/api/get-earnings?symbol=${symbol}`);
+                const result = await response.json();
+                if (result.earnings && result.earnings.length > 0) {
+                    withEarnings.add(symbol);
+                }
+            } catch (error) {
+                console.error(`Failed to check earnings for ${symbol}:`, error);
+            }
+        });
+
+        await Promise.all(checks);
+        return withEarnings;
+    },
+
+    /**
      * Hide autocomplete list
      */
     hideAutocomplete() {
@@ -195,6 +229,23 @@ const StockSelector = {
         // Set as current stock
         this.setCurrentStock(stock);
 
+        // Reason: Check if earnings data exists, if not attempt to fetch it
+        try {
+            const earningsResponse = await fetch(`/api/get-earnings?symbol=${symbol}`);
+            const earningsData = await earningsResponse.json();
+
+            if (!earningsData.earnings || earningsData.earnings.length === 0) {
+                console.log(`No earnings data found for ${symbol}, attempting to fetch...`);
+                // Attempt to fetch earnings data from external API
+                const fetchResult = await API.fetchEarnings(symbol);
+                if (fetchResult.success) {
+                    console.log(`✓ Successfully fetched earnings data for ${symbol}`);
+                }
+            }
+        } catch (error) {
+            console.error(`Error checking/fetching earnings for ${symbol}:`, error);
+        }
+
         // Load stock data
         await App.loadStockData(symbol);
     },
@@ -216,5 +267,11 @@ const StockSelector = {
 
         // Update config
         CONFIG.stock.symbol = stock.symbol;
+
+        // Dispatch symbol change event
+        const event = new CustomEvent('symbolChanged', {
+            detail: { symbol: stock.symbol, stock: stock }
+        });
+        document.dispatchEvent(event);
     }
 };

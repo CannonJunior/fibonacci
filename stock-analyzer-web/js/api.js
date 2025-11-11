@@ -75,13 +75,30 @@ const API = {
      * @returns {string}
      */
     formatShortDate(date) {
-        // Reason: Check if time is midnight (00:00:00), if so, it's daily data
-        const hours = date.getHours();
-        const minutes = date.getMinutes();
+        // Reason: Check if date is valid
+        if (!date || isNaN(date.getTime())) {
+            console.error('Invalid date passed to formatShortDate:', date);
+            return 'Invalid';
+        }
 
-        if (hours === 0 && minutes === 0) {
-            // Daily data - show date only
-            return date.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' });
+        // Reason: Check both UTC and local hours to determine if this is daily data
+        // Daily data typically has 00:00:00 time (either UTC or local)
+        const utcHours = date.getUTCHours();
+        const utcMinutes = date.getUTCMinutes();
+        const utcSeconds = date.getUTCSeconds();
+        const localHours = date.getHours();
+        const localMinutes = date.getMinutes();
+        const localSeconds = date.getSeconds();
+
+        const isUTCMidnight = utcHours === 0 && utcMinutes === 0 && utcSeconds === 0;
+        const isLocalMidnight = localHours === 0 && localMinutes === 0 && localSeconds === 0;
+
+        if (isUTCMidnight || isLocalMidnight) {
+            // Daily data - show date with month/day/year
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            const year = String(date.getFullYear()).slice(-2);
+            return `${month}/${day}/${year}`;
         } else {
             // Intraday data - show time only
             return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
@@ -305,6 +322,30 @@ const API = {
             }
         } catch (error) {
             console.error('Failed to save intraday data to database:', error);
+        }
+    },
+
+    /**
+     * Fetch earnings data for a symbol from external API
+     * @param {string} symbol - Stock symbol
+     * @returns {Promise<Object>} Result object with success, earnings, and count
+     */
+    async fetchEarnings(symbol) {
+        try {
+            console.log(`🔄 Fetching earnings data for ${symbol}...`);
+            const response = await fetch(`/api/fetch-earnings?symbol=${symbol}`);
+            const result = await response.json();
+
+            if (result.success && result.earnings && result.earnings.length > 0) {
+                console.log(`✓ Fetched ${result.count} earnings records for ${symbol}`);
+                return result;
+            } else {
+                console.log(`⚠️  No earnings data available for ${symbol}`);
+                return { success: false, earnings: [], count: 0, error: result.error };
+            }
+        } catch (error) {
+            console.error(`Failed to fetch earnings for ${symbol}:`, error);
+            return { success: false, earnings: [], count: 0, error: error.message };
         }
     }
 };

@@ -142,6 +142,28 @@ function initializeDatabase() {
         )
     `);
 
+    // Reason: Table for earnings data
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS earnings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol TEXT NOT NULL,
+            period TEXT NOT NULL,
+            quarter INTEGER NOT NULL,
+            year INTEGER NOT NULL,
+            actual REAL,
+            estimate REAL,
+            surprise REAL,
+            surprise_percent REAL,
+            report_date TEXT,
+            report_day_open REAL,
+            report_day_close REAL,
+            next_day_open REAL,
+            next_day_close REAL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(symbol, period)
+        )
+    `);
+
     // Reason: Initialize quota tracking for providers
     db.exec(`
         INSERT OR IGNORE INTO api_quota (provider, daily_limit, minute_limit, quota_reset_time, minute_reset_time)
@@ -720,6 +742,65 @@ function getLastDailyDate(symbol) {
     return result ? result.date : null;
 }
 
+/**
+ * Save earnings data for a symbol
+ * @param {string} symbol - Stock symbol
+ * @param {Array} earningsData - Array of earnings objects
+ */
+function saveEarnings(symbol, earningsData) {
+    const stmt = db.prepare(`
+        INSERT OR REPLACE INTO earnings
+        (symbol, period, quarter, year, actual, estimate, surprise, surprise_percent,
+         report_date, report_day_open, report_day_close, next_day_open, next_day_close)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    const insertMany = db.transaction((earnings) => {
+        for (const earning of earnings) {
+            stmt.run(
+                symbol,
+                earning.period,
+                earning.quarter,
+                earning.year,
+                earning.actual,
+                earning.estimate,
+                earning.surprise,
+                earning.surprisePercent,
+                earning.reportDate || null,
+                earning.reportDayOpen || null,
+                earning.reportDayClose || null,
+                earning.nextDayOpen || null,
+                earning.nextDayClose || null
+            );
+        }
+    });
+
+    insertMany(earningsData);
+}
+
+/**
+ * Get earnings data for a symbol
+ * @param {string} symbol - Stock symbol
+ * @returns {Array} Array of earnings data
+ */
+function getEarnings(symbol) {
+    const stmt = db.prepare(`
+        SELECT
+            symbol, period, quarter, year, actual, estimate, surprise,
+            surprise_percent as surprisePercent,
+            report_date as reportDate,
+            report_day_open as reportDayOpen,
+            report_day_close as reportDayClose,
+            next_day_open as nextDayOpen,
+            next_day_close as nextDayClose
+        FROM earnings
+        WHERE symbol = ?
+        ORDER BY period DESC
+    `);
+
+    return stmt.all(symbol);
+}
+
 // Initialize database on module load
 initializeDatabase();
 
@@ -751,5 +832,7 @@ module.exports = {
     recordAPICall,
     resetDailyQuota,
     resetMinuteQuota,
-    getLastDailyDate
+    getLastDailyDate,
+    saveEarnings,
+    getEarnings
 };

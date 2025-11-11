@@ -146,8 +146,13 @@ echo -e "${GREEN}✓${NC} Configuration loaded (Port: $PORT)"
 # Reason: Check if port is already in use and kill the process
 echo ""
 echo -e "${BLUE}[5.5/6]${NC} Checking port availability..."
+# Temporarily disable exit on error for lsof command
+set +e
 PID=$(lsof -ti:$PORT 2>/dev/null)
-if [ ! -z "$PID" ]; then
+LSOF_EXIT_CODE=$?
+set -e
+
+if [ $LSOF_EXIT_CODE -eq 0 ] && [ ! -z "$PID" ]; then
     echo -e "${YELLOW}⚠${NC}  Port $PORT is in use (PID: $PID). Killing process..."
     kill -9 $PID 2>/dev/null
     sleep 2

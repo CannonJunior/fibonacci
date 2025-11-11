@@ -243,7 +243,12 @@ const Chart = {
             .call(d3.axisBottom(this.xScale)
                 .ticks(CONFIG.chart.xAxisTicks)
                 .tickFormat(d => API.formatShortDate(d))
-            );
+            )
+            .selectAll('text')
+            .style('text-anchor', 'end')
+            .attr('dx', '-.8em')
+            .attr('dy', '.15em')
+            .attr('transform', 'rotate(-45)');
 
         // Y axis (prices)
         this.svg.append('g')
@@ -567,7 +572,12 @@ const Chart = {
             .call(d3.axisBottom(this.xScale)
                 .ticks(CONFIG.chart.xAxisTicks)
                 .tickFormat(d => API.formatShortDate(d))
-            );
+            )
+            .selectAll('text')
+            .style('text-anchor', 'end')
+            .attr('dx', '-.8em')
+            .attr('dy', '.15em')
+            .attr('transform', 'rotate(-45)');
     },
 
     /**

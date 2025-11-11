@@ -183,23 +183,79 @@
             </div>
         </div>
 
-        <!-- Sector Summary Cards -->
-        <div class="cards-section" id="sectorCardsSection" style="display: none;">
-            <div class="cards-section-header" id="sectorCardsHeader">
-                <h3>Sector Performance</h3>
+        <!-- Earnings Report Section -->
+        <div class="cards-section" id="earningsReportSection" style="display: none;">
+            <div class="cards-section-header" id="earningsReportHeader">
+                <h3>Earnings Reports</h3>
                 <i class="fas fa-chevron-down collapse-icon"></i>
             </div>
-            <div class="sector-cards-container" id="sectorCardsContainer">
+            <div class="earnings-section-content" id="earningsReportContent" style="display: block;">
+                <div class="earnings-summary" id="earningSummary">
+                    <div class="earnings-stat">
+                        <span class="stat-label">Last Quarter</span>
+                        <span class="stat-value" id="lastQuarterEPS">--</span>
+                    </div>
+                    <div class="earnings-stat">
+                        <span class="stat-label">Beat/Miss</span>
+                        <span class="stat-value" id="lastBeatMiss">--</span>
+                    </div>
+                    <div class="earnings-stat">
+                        <span class="stat-label">Surprise %</span>
+                        <span class="stat-value" id="lastSurprise">--</span>
+                    </div>
+                </div>
+
+                <div class="earnings-chart-container">
+                    <svg id="earningsChart"></svg>
+                </div>
+
+                <div class="earnings-table-container">
+                    <table class="earnings-table" id="earningsTable">
+                        <thead>
+                            <tr>
+                                <th rowspan="2">Quarter</th>
+                                <th rowspan="2">Report Date</th>
+                                <th colspan="3">Earnings</th>
+                                <th colspan="3">Report Day</th>
+                                <th colspan="3">Next Day</th>
+                                <th rowspan="2">2-Day Change</th>
+                            </tr>
+                            <tr>
+                                <th>Actual EPS</th>
+                                <th>Est. EPS</th>
+                                <th>Surprise %</th>
+                                <th>Open</th>
+                                <th>Close</th>
+                                <th>Change</th>
+                                <th>Open</th>
+                                <th>Close</th>
+                                <th>Change</th>
+                            </tr>
+                        </thead>
+                        <tbody id="earningsTableBody">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sector Summary Cards -->
+        <div class="cards-section collapsed" id="sectorCardsSection" style="display: none;">
+            <div class="cards-section-header" id="sectorCardsHeader">
+                <h3>Sector Performance</h3>
+                <i class="fas fa-chevron-right collapse-icon"></i>
+            </div>
+            <div class="sector-cards-container" id="sectorCardsContainer" style="display: none;">
             </div>
         </div>
 
         <!-- Subsector Summary Cards -->
-        <div class="cards-section" id="subsectorCardsSection" style="display: none;">
+        <div class="cards-section collapsed" id="subsectorCardsSection" style="display: none;">
             <div class="cards-section-header" id="subsectorCardsHeader">
                 <h3>Subsector Performance</h3>
-                <i class="fas fa-chevron-down collapse-icon"></i>
+                <i class="fas fa-chevron-right collapse-icon"></i>
             </div>
-            <div class="subsector-cards-container" id="subsectorCardsContainer">
+            <div class="subsector-cards-container" id="subsectorCardsContainer" style="display: none;">
             </div>
         </div>
 
@@ -226,7 +282,7 @@
         </div>
 
         <!-- Main Chart Area -->
-        <div class="chart-container">
+        <div class="chart-container" id="chartView">
             <svg id="chart"></svg>
             <svg id="brush-chart"></svg>
             <div id="tooltip" class="tooltip" style="display: none;"></div>
@@ -271,6 +327,7 @@
     <script src="js/hedge-funds.js"></script>
     <script src="js/cards-sections.js"></script>
     <script src="js/clock.js"></script>
+    <script src="js/earnings.js"></script>
     <script src="js/app.js"></script>
 </body>
 </html>

@@ -26,9 +26,16 @@ const Sidebar = {
      * Setup event listeners
      */
     setupEventListeners() {
+        console.log('Sidebar: Setting up event listeners...');
+
         // Expand/Collapse all button
         const expandAllButton = document.getElementById('expandAllButton');
         const expandAllIcon = document.getElementById('expandAllIcon');
+
+        if (!expandAllButton) {
+            console.error('Sidebar: expandAllButton not found!');
+            return;
+        }
 
         expandAllButton.addEventListener('click', async (e) => {
             e.stopPropagation();
@@ -89,28 +96,49 @@ const Sidebar = {
         const fetchDataButton = document.getElementById('fetchDataButton');
         const fetchDataPanel = document.getElementById('fetchDataPanel');
 
-        fetchDataButton.addEventListener('click', (e) => {
-            e.stopPropagation();
-            fetchDataPanel.classList.toggle('open');
-        });
+        if (!fetchDataButton || !fetchDataPanel) {
+            console.error('Sidebar: fetchDataButton or fetchDataPanel not found!');
+        } else {
+            fetchDataButton.addEventListener('click', (e) => {
+                e.stopPropagation();
+                console.log('Sidebar: Toggling fetch data panel');
+                fetchDataPanel.classList.toggle('open');
+                console.log('Sidebar: Fetch panel open:', fetchDataPanel.classList.contains('open'));
+            });
+            console.log('Sidebar: Fetch data button listener attached');
+        }
 
         // Filter button toggle
         const filterButton = document.getElementById('filterButton');
         const filterPanel = document.getElementById('filterPanel');
 
-        filterButton.addEventListener('click', (e) => {
-            e.stopPropagation();
-            filterPanel.classList.toggle('open');
-        });
+        if (!filterButton || !filterPanel) {
+            console.error('Sidebar: filterButton or filterPanel not found!');
+        } else {
+            filterButton.addEventListener('click', (e) => {
+                e.stopPropagation();
+                console.log('Sidebar: Toggling filter panel');
+                filterPanel.classList.toggle('open');
+                console.log('Sidebar: Filter panel open:', filterPanel.classList.contains('open'));
+            });
+            console.log('Sidebar: Filter button listener attached');
+        }
 
         // Hedge funds button toggle
         const hedgeFundsButton = document.getElementById('hedgeFundsButton');
         const hedgeFundsPanel = document.getElementById('hedgeFundsPanel');
 
-        hedgeFundsButton.addEventListener('click', (e) => {
-            e.stopPropagation();
-            hedgeFundsPanel.classList.toggle('open');
-        });
+        if (!hedgeFundsButton || !hedgeFundsPanel) {
+            console.error('Sidebar: hedgeFundsButton or hedgeFundsPanel not found!');
+        } else {
+            hedgeFundsButton.addEventListener('click', (e) => {
+                e.stopPropagation();
+                console.log('Sidebar: Toggling hedge funds panel');
+                hedgeFundsPanel.classList.toggle('open');
+                console.log('Sidebar: Hedge funds panel open:', hedgeFundsPanel.classList.contains('open'));
+            });
+            console.log('Sidebar: Hedge funds button listener attached');
+        }
 
         // Filter option expand/collapse
         document.querySelectorAll('.filter-option-header').forEach(header => {
@@ -407,7 +435,8 @@ const Sidebar = {
                         candles: null,
                         percentChange: 0,
                         marketCap: null,
-                        hasChartData: false
+                        hasChartData: false,
+                        hasEarningsData: false
                     });
                 }
                 return;
@@ -432,6 +461,9 @@ const Sidebar = {
             // Reason: Load financial data from database if it exists
             const financialData = await this.loadFinancialDataFromDatabase(symbol);
 
+            // Reason: Check if earnings data exists for this stock
+            const hasEarningsData = await this.checkEarningsData(symbol);
+
             const stockData = {
                 symbol,
                 name: stockInfo.name,
@@ -443,7 +475,8 @@ const Sidebar = {
                 overview: financialData.overview,
                 incomeStatements: financialData.statements,
                 yoyChanges: financialData.yoyChanges,
-                hasChartData: true
+                hasChartData: true,
+                hasEarningsData: hasEarningsData
             };
 
             if (existingIndex >= 0) {
@@ -455,6 +488,22 @@ const Sidebar = {
 
         } catch (error) {
             console.error(`Failed to add ${symbol} to sidebar:`, error);
+        }
+    },
+
+    /**
+     * Check if a stock has earnings data
+     * @param {string} symbol - Stock symbol
+     * @returns {boolean} - True if earnings data exists
+     */
+    async checkEarningsData(symbol) {
+        try {
+            const response = await fetch(`/api/get-earnings?symbol=${symbol}`);
+            const data = await response.json();
+            return data.earnings && data.earnings.length > 0;
+        } catch (error) {
+            console.error(`Failed to check earnings for ${symbol}:`, error);
+            return false;
         }
     },
 
@@ -932,8 +981,13 @@ const Sidebar = {
             // Reason: Determine positive/negative based on current sort type
             const isPositive = this.getIsPositive(stock);
             const isActive = stock.symbol === CONFIG.stock.symbol;
-            // Reason: Use consolidated check for complete data
-            const hasData = this.hasCompleteData(stock) ? 'has-chart-data' : '';
+            // Reason: Determine highlight class based on data availability
+            let hasData = '';
+            if (this.hasCompleteData(stock) && stock.hasEarningsData) {
+                hasData = 'has-earnings-data'; // Purple highlight for stocks with earnings data
+            } else if (this.hasCompleteData(stock)) {
+                hasData = 'has-chart-data'; // Green highlight for stocks with chart data only
+            }
             const isExpanded = stock.isExpanded || false;
             const expandIcon = isExpanded ? 'fa-down-left-and-up-right-to-center' : 'fa-expand-alt';
 
@@ -1535,7 +1589,10 @@ const Sidebar = {
         // Reason: Calculate average percentage change for each date
         const performanceData = Array.from(dateMap.values())
             .map(dateData => ({
-                date: dateData.date,
+                // Reason: Convert Date object to YYYY-MM-DD string format to match daily candle format
+                date: dateData.date instanceof Date
+                    ? dateData.date.toISOString().split('T')[0]
+                    : dateData.date,
                 percentChange: dateData.stockChanges.length > 0
                     ? dateData.stockChanges.reduce((sum, val) => sum + val, 0) / dateData.stockChanges.length
                     : 0
@@ -1609,7 +1666,10 @@ const Sidebar = {
         // Reason: Calculate average percentage change for each date
         const performanceData = Array.from(dateMap.values())
             .map(dateData => ({
-                date: dateData.date,
+                // Reason: Convert Date object to YYYY-MM-DD string format to match daily candle format
+                date: dateData.date instanceof Date
+                    ? dateData.date.toISOString().split('T')[0]
+                    : dateData.date,
                 percentChange: dateData.stockChanges.length > 0
                     ? dateData.stockChanges.reduce((sum, val) => sum + val, 0) / dateData.stockChanges.length
                     : 0

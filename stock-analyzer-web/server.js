@@ -386,6 +386,63 @@ const server = http.createServer((req, res) => {
         return;
     }
 
+    // API endpoint to get earnings data
+    if (pathname === '/api/get-earnings') {
+        const symbol = parsedUrl.query.symbol;
+        if (!symbol) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Symbol parameter required' }));
+            return;
+        }
+
+        const earnings = db.getEarnings(symbol);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ earnings }));
+        return;
+    }
+
+    // API endpoint to save earnings data
+    if (pathname === '/api/save-earnings' && req.method === 'POST') {
+        let body = '';
+        req.on('data', chunk => { body += chunk.toString(); });
+        req.on('end', () => {
+            try {
+                const { symbol, earnings } = JSON.parse(body);
+                db.saveEarnings(symbol, earnings);
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: true }));
+            } catch (error) {
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: error.message }));
+            }
+        });
+        return;
+    }
+
+    // API endpoint to fetch earnings data from external sources
+    if (pathname === '/api/fetch-earnings') {
+        const symbol = parsedUrl.query.symbol;
+        if (!symbol) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Symbol parameter required' }));
+            return;
+        }
+
+        // Reason: Fetch earnings with stock prices
+        const fetchEarnings = require('./fetch-earnings');
+        fetchEarnings.fetchEarningsWithPrices(symbol)
+            .then(earnings => {
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: true, earnings, count: earnings.length }));
+            })
+            .catch(error => {
+                console.error(`Error fetching earnings for ${symbol}:`, error);
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: error.message, success: false }));
+            });
+        return;
+    }
+
     // Serve static files
     let filePath = '.' + req.url;
     if (filePath === './') {

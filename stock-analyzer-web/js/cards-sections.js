@@ -55,14 +55,16 @@ const CardsSections = {
         // Toggle display
         if (container.style.display === 'none' || !container.style.display) {
             container.style.display = displayValue;
-            icon.classList.remove('fa-chevron-down');
-            icon.classList.add('fa-chevron-up');
+            icon.classList.remove('fa-chevron-down', 'fa-chevron-right');
+            icon.classList.add('fa-chevron-down');
             headerElement.classList.add('expanded');
+            headerElement.parentElement.classList.remove('collapsed');
         } else {
             container.style.display = 'none';
-            icon.classList.remove('fa-chevron-up');
-            icon.classList.add('fa-chevron-down');
+            icon.classList.remove('fa-chevron-down', 'fa-chevron-up');
+            icon.classList.add('fa-chevron-right');
             headerElement.classList.remove('expanded');
+            headerElement.parentElement.classList.add('collapsed');
         }
     },
 
